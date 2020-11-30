@@ -449,9 +449,11 @@ public class BeanInfo implements InjectionTargetInfo {
 
     private void addClassLevelBindings(ClassInfo classInfo, Collection<AnnotationInstance> bindings) {
         beanDeployment.getAnnotations(classInfo).stream()
-                .filter(a -> beanDeployment.getInterceptorBinding(a.name()) != null
-                        && bindings.stream().noneMatch(e -> e.name().equals(a.name())))
-                .forEach(a -> bindings.add(a));
+                .flatMap(a -> beanDeployment.extractInterceptorBindings(a).stream())
+                // TODO this is weird -- either we allow multiple class-level interceptor bindings of the same type,
+                //  or we fail deployment, but we shouldn't just pick one and drop the others silently
+                //.filter(a -> bindings.stream().noneMatch(e -> e.name().equals(a.name())))
+                .forEach(bindings::add);
         if (classInfo.superClassType() != null && !classInfo.superClassType().name().equals(DotNames.OBJECT)) {
             ClassInfo superClass = getClassByName(beanDeployment.getBeanArchiveIndex(), classInfo.superName());
             if (superClass != null) {
@@ -470,9 +472,8 @@ public class BeanInfo implements InjectionTargetInfo {
         }
         if (constructor != null) {
             beanDeployment.getAnnotations(constructor).stream()
-                    .filter(a -> beanDeployment.getInterceptorBinding(a.name()) != null
-                            && bindings.stream().noneMatch(e -> e.name().equals(a.name())))
-                    .forEach(a -> bindings.add(a));
+                    .flatMap(a -> beanDeployment.extractInterceptorBindings(a).stream())
+                    .forEach(bindings::add);
         }
     }
 

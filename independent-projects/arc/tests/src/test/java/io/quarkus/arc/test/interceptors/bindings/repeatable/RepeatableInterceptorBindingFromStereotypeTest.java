@@ -1,0 +1,147 @@
+package io.quarkus.arc.test.interceptors.bindings.repeatable;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.test.ArcTestContainer;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.util.concurrent.atomic.AtomicBoolean;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import javax.enterprise.inject.Stereotype;
+import javax.inject.Singleton;
+import javax.interceptor.AroundConstruct;
+import javax.interceptor.AroundInvoke;
+import javax.interceptor.Interceptor;
+import javax.interceptor.InterceptorBinding;
+import javax.interceptor.InvocationContext;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+/**
+ * Tests repeating interceptor binding declared on a stereotype.
+ */
+public class RepeatableInterceptorBindingFromStereotypeTest {
+    @RegisterExtension
+    public ArcTestContainer container = new ArcTestContainer(MyBinding.class, MyBinding.List.class,
+            MyStereotype.class, MyBean.class, IncrementingInterceptor.class);
+
+    @BeforeEach
+    public void setUp() {
+        IncrementingInterceptor.AROUND_CONSTRUCT.set(false);
+        IncrementingInterceptor.POST_CONSTRUCT.set(false);
+        IncrementingInterceptor.PRE_DESTROY.set(false);
+    }
+
+    @Test
+    public void test() {
+        MyBean bean = Arc.container().instance(MyBean.class).get();
+
+        assertSame(bean, Arc.container().instance(MyBean.class).get());
+
+        assertEquals(10, bean.foo());
+        assertEquals(21, bean.foobar());
+        assertEquals(30, bean.foobaz());
+        assertEquals(41, bean.foobarbaz());
+        assertEquals(51, bean.nonannotated());
+
+        // interceptor bindings are not propagated from stereotypes to constructors
+        assertFalse(IncrementingInterceptor.AROUND_CONSTRUCT.get());
+
+        // post-construct and pre-destroy interceptors aren't called,
+        // because there are no class-level interceptor bindings
+        assertFalse(IncrementingInterceptor.POST_CONSTRUCT.get());
+        assertFalse(IncrementingInterceptor.PRE_DESTROY.get());
+    }
+
+    @Target({ ElementType.TYPE, ElementType.METHOD, ElementType.CONSTRUCTOR })
+    @Retention(RetentionPolicy.RUNTIME)
+    @Repeatable(MyBinding.List.class)
+    @InterceptorBinding
+    @interface MyBinding {
+        String value();
+
+        @Target({ ElementType.TYPE, ElementType.METHOD, ElementType.CONSTRUCTOR })
+        @Retention(RetentionPolicy.RUNTIME)
+        @interface List {
+            MyBinding[] value();
+        }
+    }
+
+    @MyBinding("foo")
+    @MyBinding("bar")
+    @Singleton
+    @Stereotype
+    @Target(ElementType.TYPE)
+    @Retention(RetentionPolicy.RUNTIME)
+    @interface MyStereotype {
+    }
+
+    @MyStereotype
+    static class MyBean {
+        @MyBinding("foo")
+        public int foo() {
+            return 10;
+        }
+
+        @MyBinding("foo")
+        @MyBinding("bar")
+        public int foobar() {
+            return 20;
+        }
+
+        @MyBinding("foo")
+        @MyBinding("baz")
+        public int foobaz() {
+            return 30;
+        }
+
+        @MyBinding("foo")
+        @MyBinding("bar")
+        @MyBinding("baz")
+        public int foobarbaz() {
+            return 40;
+        }
+
+        public int nonannotated() {
+            return 50;
+        }
+    }
+
+    @Interceptor
+    @MyBinding("foo")
+    @MyBinding("bar")
+    static class IncrementingInterceptor {
+        static final AtomicBoolean AROUND_CONSTRUCT = new AtomicBoolean(false);
+        static final AtomicBoolean POST_CONSTRUCT = new AtomicBoolean(false);
+        static final AtomicBoolean PRE_DESTROY = new AtomicBoolean(false);
+
+        @AroundConstruct
+        public void aroundConstruct(InvocationContext ctx) throws Exception {
+            AROUND_CONSTRUCT.set(true);
+            ctx.proceed();
+        }
+
+        @PostConstruct
+        public void postConstruct(InvocationContext ctx) {
+            POST_CONSTRUCT.set(true);
+        }
+
+        @PreDestroy
+        public void preDestroy(InvocationContext ctx) {
+            PRE_DESTROY.set(true);
+        }
+
+        @AroundInvoke
+        public Object intercept(InvocationContext ctx) throws Exception {
+            return ((Integer) ctx.proceed()) + 1;
+        }
+    }
+}

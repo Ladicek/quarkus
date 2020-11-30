@@ -66,6 +66,8 @@ public class BeanDeployment {
 
     private final Map<DotName, ClassInfo> interceptorBindings;
 
+    private final Map<DotName, ClassInfo> repeatingInterceptorBindingAnnotations;
+
     private final Map<DotName, Set<String>> nonBindingFields;
 
     private final Map<DotName, Set<AnnotationInstance>> transitiveInterceptorBindings;
@@ -151,6 +153,7 @@ public class BeanDeployment {
                 }
             }
         }
+        this.repeatingInterceptorBindingAnnotations = findContainerAnnotations(interceptorBindings, this.beanArchiveIndex);
         buildContextPut(Key.INTERCEPTOR_BINDINGS.asString(), Collections.unmodifiableMap(interceptorBindings));
 
         this.stereotypes = findStereotypes(this.beanArchiveIndex, interceptorBindings, beanDefiningAnnotations, customContexts,
@@ -409,22 +412,40 @@ public class BeanDeployment {
      * @return a collection of qualifiers or an empty collection
      */
     Collection<AnnotationInstance> extractQualifiers(AnnotationInstance annotation) {
-        DotName annotationName = annotation.name();
-        if (qualifiers.get(annotationName) != null) {
-            return Collections.singleton(annotation);
-        } else {
-            if (repeatingQualifierAnnotations.get(annotationName) != null) {
-                // container annotation, we need to extract actual qualifiers
-                return new ArrayList<>(Arrays.asList(annotation.value().asNestedArray()));
-            } else {
-                // neither qualifier, nor container annotation, return empty collection
-                return Collections.emptyList();
-            }
-        }
+        return extractAnnotations(annotation, qualifiers, repeatingQualifierAnnotations);
     }
 
     ClassInfo getInterceptorBinding(DotName name) {
         return interceptorBindings.get(name);
+    }
+
+    /**
+     * Extracts interceptor bindings from given annotation instance.
+     * This returns a collection because in case of repeating interceptor bindings there can be multiple.
+     * For most instances this will be a singleton instance (if given annotatation is an interceptor binding) or
+     * an empty list for cases where the annotation is not an interceptor binding.
+     *
+     * @param annotation instance to be inspected
+     * @return a collection of interceptor bindings or an empty collection
+     */
+    Collection<AnnotationInstance> extractInterceptorBindings(AnnotationInstance annotation) {
+        return extractAnnotations(annotation, interceptorBindings, repeatingInterceptorBindingAnnotations);
+    }
+
+    private static Collection<AnnotationInstance> extractAnnotations(AnnotationInstance annotation,
+            Map<DotName, ClassInfo> singulars, Map<DotName, ClassInfo> repeatables) {
+        DotName annotationName = annotation.name();
+        if (singulars.get(annotationName) != null) {
+            return Collections.singleton(annotation);
+        } else {
+            if (repeatables.get(annotationName) != null) {
+                // repeatable, we need to extract actual annotations
+                return new ArrayList<>(Arrays.asList(annotation.value().asNestedArray()));
+            } else {
+                // neither singular nor repeatable, return empty collection
+                return Collections.emptyList();
+            }
+        }
     }
 
     Set<AnnotationInstance> getTransitiveInterceptorBindings(DotName name) {
