@@ -134,6 +134,20 @@ final class Methods {
         return false;
     }
 
+    static boolean skipForDelegateSubclass(MethodInfo method) {
+        if (Modifier.isStatic(method.flags())) {
+            return true;
+        }
+        if (IGNORED_METHODS.contains(method.name())) {
+            return true;
+        }
+        // skip all Object methods
+        if (method.declaringClass().name().equals(DotNames.OBJECT)) {
+            return true;
+        }
+        return false;
+    }
+
     static boolean isObjectToString(MethodInfo method) {
         return method.declaringClass().name().equals(DotNames.OBJECT) && method.name().equals(TO_STRING);
     }
@@ -360,6 +374,39 @@ final class Methods {
             default:
                 return DotNames.OBJECT;
         }
+    }
+
+    static void addDelegateTypeMethods(IndexView index, ClassInfo delegateTypeClass, List<MethodInfo> methods) {
+        if (delegateTypeClass != null) {
+            for (MethodInfo method : delegateTypeClass.methods()) {
+                if (skipForDelegateSubclass(method)) {
+                    continue;
+                }
+                methods.add(method);
+            }
+            // Interfaces
+            for (Type interfaceType : delegateTypeClass.interfaceTypes()) {
+                ClassInfo interfaceClassInfo = getClassByName(index, interfaceType.name());
+                if (interfaceClassInfo != null) {
+                    addDelegateTypeMethods(index, interfaceClassInfo, methods);
+                }
+            }
+            if (delegateTypeClass.superClassType() != null) {
+                ClassInfo superClassInfo = getClassByName(index, delegateTypeClass.superName());
+                if (superClassInfo != null) {
+                    addDelegateTypeMethods(index, superClassInfo, methods);
+                }
+            }
+        }
+    }
+
+    static boolean containsTypeVariableParameter(MethodInfo method) {
+        for (Type param : method.parameters()) {
+            if (Types.containsTypeVariable(param)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static class RemoveFinalFromMethod implements BiFunction<String, ClassVisitor, ClassVisitor> {
