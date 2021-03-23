@@ -593,12 +593,14 @@ public class SubclassGenerator extends AbstractGenerator {
         }
         ResultHandle delegateSubclassInstance = subclassConstructor.newInstance(MethodDescriptor.ofConstructor(
                 delegateSubclass.getClassName(), constructorParameterTypes.toArray(new String[0])), paramHandles);
-        subclassConstructor.invokeStaticMethod(MethodDescriptors.DECORATOR_DELEGATE_PROVIDER_SET, delegateSubclassInstance);
+        //subclassConstructor.invokeStaticMethod(MethodDescriptors.DECORATOR_DELEGATE_PROVIDER_SET, delegateSubclassInstance);
+        subclassConstructor.invokeVirtualMethod(MethodDescriptors.CREATIONAL_CONTEXT_SET_EXTRA, creationalContext, delegateSubclassInstance);
 
         ResultHandle decoratorInstance = subclassConstructor.invokeInterfaceMethod(
                 MethodDescriptors.INJECTABLE_REF_PROVIDER_GET, constructorMethodParam, creationalContext);
         // And unset the delegate IP afterwards
-        subclassConstructor.invokeStaticMethod(MethodDescriptors.DECORATOR_DELEGATE_PROVIDER_UNSET);
+        //subclassConstructor.invokeStaticMethod(MethodDescriptors.DECORATOR_DELEGATE_PROVIDER_UNSET);
+        subclassConstructor.invokeVirtualMethod(MethodDescriptors.CREATIONAL_CONTEXT_REMOVE_EXTRA, creationalContext);
 
         decoratorToResultHandle.put(decorator.getIdentifier(), decoratorInstance);
 

@@ -9,7 +9,8 @@ public class DecoratorDelegateProvider implements InjectableReferenceProvider<Ob
 
     @Override
     public Object get(CreationalContext<Object> creationalContext) {
-        return CURRENT.get();
+        return ((CreationalContextImpl<Object>) creationalContext).getExtra();
+        //return CURRENT.get();
     }
 
     /**

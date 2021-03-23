@@ -273,6 +273,11 @@ public final class MethodDescriptors {
     public static final MethodDescriptor DECORATOR_DELEGATE_PROVIDER_UNSET = MethodDescriptor
             .ofMethod(DecoratorDelegateProvider.class, "unset", void.class);
 
+    public static final MethodDescriptor CREATIONAL_CONTEXT_SET_EXTRA = MethodDescriptor
+            .ofMethod(CreationalContextImpl.class, "setExtra", void.class, Object.class);
+    public static final MethodDescriptor CREATIONAL_CONTEXT_REMOVE_EXTRA = MethodDescriptor
+            .ofMethod(CreationalContextImpl.class, "removeExtra", void.class);
+
     private MethodDescriptors() {
     }
 

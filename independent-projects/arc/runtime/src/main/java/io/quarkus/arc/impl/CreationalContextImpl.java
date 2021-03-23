@@ -22,6 +22,26 @@ public class CreationalContextImpl<T> implements CreationalContext<T>, Function<
     private final CreationalContextImpl<?> parent;
     private List<InstanceHandle<?>> dependentInstances;
 
+    private Object extra;
+
+    public void setExtra(Object obj) {
+        this.extra = obj;
+    }
+
+    public Object getExtra() {
+        if (extra != null) {
+            return extra;
+        }
+        if (parent != null) {
+            return parent.getExtra();
+        }
+        return null;
+    }
+
+    public void removeExtra() {
+        this.extra = null;
+    }
+
     public CreationalContextImpl(Contextual<T> contextual) {
         this(contextual, null);
     }
