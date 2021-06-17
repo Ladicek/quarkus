@@ -17,6 +17,28 @@
         <dependency>
             <groupId>io.apicurio</groupId>
             <artifactId>apicurio-registry-serdes-avro-serde</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.apicurio</groupId>
+                    <artifactId>apicurio-registry-client</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.apicurio</groupId>
+            <!--
+              - when we remove our own implementation of the HTTP client SPI (see ApicurioRegistryClient),
+              - this dependency should become `apicurio-registry-client-vertx` (n.b. must update the BOM too!)
+              -->
+            <artifactId>apicurio-registry-client-common</artifactId>
+        </dependency>
+        <dependency>
+            <!--
+              - when we remove our own implementation of the HTTP client SPI (see ApicurioRegistryClient),
+              - this dependency should be removed
+              -->
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-web-client</artifactId>
         </dependency>
 
         <dependency>
@@ -31,6 +53,10 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-apache-httpclient</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-vertx</artifactId>
         </dependency>
     </dependencies>
 
