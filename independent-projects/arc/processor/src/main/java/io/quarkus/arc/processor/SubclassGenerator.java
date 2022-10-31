@@ -188,8 +188,11 @@ public class SubclassGenerator extends AbstractGenerator {
         List<MethodInfo> interceptedOrDecoratedMethods = bean.getInterceptedOrDecoratedMethods();
         int methodIdx = 1;
         for (MethodInfo method : interceptedOrDecoratedMethods) {
-            forwardingMethods.put(MethodDescriptor.of(method),
-                    createForwardingMethod(subclass, providerTypeName, method, methodIdx));
+            boolean isDecorated = bean.getDecoratedMethods().get(method) != null;
+            if (isDecorated) {
+                forwardingMethods.put(MethodDescriptor.of(method),
+                        createForwardingMethod(subclass, providerTypeName, method, methodIdx));
+            }
         }
 
         // If a decorator is associated:
@@ -693,7 +696,9 @@ public class SubclassGenerator extends AbstractGenerator {
         if (Modifier.isAbstract(method.flags())) {
             notConstructed.throwException(IllegalStateException.class, "Cannot delegate to an abstract method");
         } else {
-            notConstructed.returnValue(notConstructed.invokeVirtualMethod(forwardMethod, notConstructed.getThis(), params));
+            MethodDescriptor virtualMethod = MethodDescriptor.ofMethod(providerTypeName, originalMethodDescriptor.getName(),
+                    originalMethodDescriptor.getReturnType(), originalMethodDescriptor.getParameterTypes());
+            notConstructed.returnValue(notConstructed.invokeSpecialMethod(virtualMethod, notConstructed.getThis(), params));
         }
 
         ResultHandle decoratorHandle = null;
@@ -704,7 +709,9 @@ public class SubclassGenerator extends AbstractGenerator {
 
         // Forwarding function
         // Function<InvocationContext, Object> forward = ctx -> super.foo((java.lang.String)ctx.getParameters()[0])
-        FunctionCreator func = interceptedMethod.createFunction(Function.class);
+        // TODO Gizmo lambdas don't support captured variables yet, which is required for decorators
+        FunctionCreator func = decorator != null ? interceptedMethod.createFunction(Function.class)
+                : interceptedMethod.createLambda(Function.class);
         BytecodeCreator funcBytecode = func.getBytecode();
         ResultHandle ctxHandle = funcBytecode.getMethodParam(0);
         ResultHandle[] superParamHandles;
@@ -737,7 +744,9 @@ public class SubclassGenerator extends AbstractGenerator {
                     .returnValue(funcBytecode.invokeVirtualMethod(methodDescriptor, funDecoratorInstance, superParamHandles));
 
         } else {
-            ResultHandle superResult = funcBytecode.invokeVirtualMethod(forwardMethod, interceptedMethod.getThis(),
+            MethodDescriptor virtualMethod = MethodDescriptor.ofMethod(providerTypeName, originalMethodDescriptor.getName(),
+                    originalMethodDescriptor.getReturnType(), originalMethodDescriptor.getParameterTypes());
+            ResultHandle superResult = funcBytecode.invokeSpecialMethod(virtualMethod, funcBytecode.getThis(),
                     superParamHandles);
             funcBytecode.returnValue(superResult != null ? superResult : funcBytecode.loadNull());
         }
