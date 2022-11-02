@@ -235,77 +235,54 @@ public class SubclassGenerator extends AbstractGenerator {
         FieldCreator constructedField = subclass.getFieldCreator(FIELD_NAME_CONSTRUCTED, boolean.class)
                 .setModifiers(ACC_PRIVATE | ACC_FINAL);
 
-        // Initialize maps of shared interceptor chains and interceptor bindings
-        IntegerHolder chainIdx = new IntegerHolder();
-        IntegerHolder bindingIdx = new IntegerHolder();
-        Map<List<InterceptorInfo>, String> interceptorChainKeys = new HashMap<>();
-        Map<List<BindingKey>, String> bindingKeys = new HashMap<>();
-
-        ResultHandle interceptorChainMap = constructor.newInstance(MethodDescriptor.ofConstructor(HashMap.class));
-        ResultHandle bindingsMap = constructor.newInstance(MethodDescriptor.ofConstructor(HashMap.class));
-
         // Shared interceptor bindings literals
         Map<BindingKey, ResultHandle> bindingsLiterals = new HashMap<>();
-        Function<BindingKey, ResultHandle> bindingsLiteralFun = new Function<SubclassGenerator.BindingKey, ResultHandle>() {
-            @Override
-            public ResultHandle apply(BindingKey key) {
-                // Create annotation literal if needed
-                ClassInfo bindingClass = bean.getDeployment().getInterceptorBinding(key.annotation.name());
-                return annotationLiterals.create(constructor, bindingClass, key.annotation);
+        Function<BindingKey, ResultHandle> bindingsLiteralFun = key -> {
+            // Create annotation literal if needed
+            ClassInfo bindingClass = bean.getDeployment().getInterceptorBinding(key.annotation.name());
+            return annotationLiterals.create(constructor, bindingClass, key.annotation);
+        };
+
+        // Shared interceptor bindings
+        Map<List<BindingKey>, ResultHandle> bindings = new HashMap<>();
+        Function<List<BindingKey>, ResultHandle> bindingsFun = keys -> {
+            if (keys.size() == 1) {
+                return constructor.invokeStaticMethod(MethodDescriptors.COLLECTIONS_SINGLETON,
+                        bindingsLiterals.computeIfAbsent(keys.iterator().next(), bindingsLiteralFun));
+            } else {
+                ResultHandle bindingsArray = constructor.newArray(Object.class, keys.size());
+                int bindingsIndex = 0;
+                for (BindingKey binding : keys) {
+                    constructor.writeArrayValue(bindingsArray, bindingsIndex++,
+                            bindingsLiterals.computeIfAbsent(binding, bindingsLiteralFun));
+                }
+                return constructor.invokeStaticMethod(MethodDescriptors.SETS_OF, bindingsArray);
             }
         };
 
-        Function<List<InterceptorInfo>, String> interceptorChainKeysFun = new Function<List<InterceptorInfo>, String>() {
-            @Override
-            public String apply(List<InterceptorInfo> interceptors) {
-                String key = "i" + chainIdx.i++;
-                if (interceptors.size() == 1) {
-                    // List<InvocationContextImpl.InterceptorInvocation> chain = Collections.singletonList(...);
-                    InterceptorInfo interceptor = interceptors.get(0);
+        // Shared interceptor chains
+        Map<List<InterceptorInfo>, ResultHandle> interceptorChains = new HashMap<>();
+        Function<List<InterceptorInfo>, ResultHandle> interceptorChainKeysFun = interceptors -> {
+            if (interceptors.size() == 1) {
+                // List<InvocationContextImpl.InterceptorInvocation> chain = Collections.singletonList(...);
+                InterceptorInfo interceptor = interceptors.get(0);
+                ResultHandle interceptorInstance = interceptorInstanceToResultHandle.get(interceptor.getIdentifier());
+                ResultHandle interceptionInvocation = constructor.invokeStaticMethod(
+                        MethodDescriptors.INTERCEPTOR_INVOCATION_AROUND_INVOKE,
+                        interceptorToResultHandle.get(interceptor.getIdentifier()), interceptorInstance);
+                return constructor.invokeStaticMethod(MethodDescriptors.COLLECTIONS_SINGLETON_LIST, interceptionInvocation);
+            } else {
+                // List<InvocationContextImpl.InterceptorInvocation> chain = new ArrayList<>();
+                ResultHandle chainHandle = constructor.newInstance(MethodDescriptor.ofConstructor(ArrayList.class));
+                for (InterceptorInfo interceptor : interceptors) {
+                    // m1Chain.add(InvocationContextImpl.InterceptorInvocation.aroundInvoke(p3,interceptorInstanceMap.get(InjectableInterceptor.getIdentifier())))
                     ResultHandle interceptorInstance = interceptorInstanceToResultHandle.get(interceptor.getIdentifier());
                     ResultHandle interceptionInvocation = constructor.invokeStaticMethod(
                             MethodDescriptors.INTERCEPTOR_INVOCATION_AROUND_INVOKE,
                             interceptorToResultHandle.get(interceptor.getIdentifier()), interceptorInstance);
-                    constructor.invokeInterfaceMethod(MethodDescriptors.MAP_PUT, interceptorChainMap, constructor.load(key),
-                            constructor.invokeStaticMethod(MethodDescriptors.COLLECTIONS_SINGLETON_LIST,
-                                    interceptionInvocation));
-                } else {
-                    // List<InvocationContextImpl.InterceptorInvocation> chain = new ArrayList<>();
-                    ResultHandle chainHandle = constructor.newInstance(MethodDescriptor.ofConstructor(ArrayList.class));
-                    for (InterceptorInfo interceptor : interceptors) {
-                        // m1Chain.add(InvocationContextImpl.InterceptorInvocation.aroundInvoke(p3,interceptorInstanceMap.get(InjectableInterceptor.getIdentifier())))
-                        ResultHandle interceptorInstance = interceptorInstanceToResultHandle.get(interceptor.getIdentifier());
-                        ResultHandle interceptionInvocation = constructor.invokeStaticMethod(
-                                MethodDescriptors.INTERCEPTOR_INVOCATION_AROUND_INVOKE,
-                                interceptorToResultHandle.get(interceptor.getIdentifier()), interceptorInstance);
-                        constructor.invokeInterfaceMethod(MethodDescriptors.LIST_ADD, chainHandle, interceptionInvocation);
-                    }
-                    constructor.invokeInterfaceMethod(MethodDescriptors.MAP_PUT, interceptorChainMap, constructor.load(key),
-                            chainHandle);
+                    constructor.invokeInterfaceMethod(MethodDescriptors.LIST_ADD, chainHandle, interceptionInvocation);
                 }
-                return key;
-            }
-        };
-
-        Function<List<BindingKey>, String> bindingsFun = new Function<List<BindingKey>, String>() {
-            @Override
-            public String apply(List<BindingKey> keys) {
-                String key = "b" + bindingIdx.i++;
-                if (keys.size() == 1) {
-                    constructor.invokeInterfaceMethod(MethodDescriptors.MAP_PUT, bindingsMap, constructor.load(key),
-                            constructor.invokeStaticMethod(MethodDescriptors.COLLECTIONS_SINGLETON,
-                                    bindingsLiterals.computeIfAbsent(keys.iterator().next(), bindingsLiteralFun)));
-                } else {
-                    ResultHandle bindingsArray = constructor.newArray(Object.class, keys.size());
-                    int bindingsIndex = 0;
-                    for (BindingKey binding : keys) {
-                        constructor.writeArrayValue(bindingsArray, bindingsIndex++,
-                                bindingsLiterals.computeIfAbsent(binding, bindingsLiteralFun));
-                    }
-                    constructor.invokeInterfaceMethod(MethodDescriptors.MAP_PUT, bindingsMap, constructor.load(key),
-                            constructor.invokeStaticMethod(MethodDescriptors.SETS_OF, bindingsArray));
-                }
-                return key;
+                return chainHandle;
             }
         };
 
@@ -316,38 +293,88 @@ public class SubclassGenerator extends AbstractGenerator {
                 // Each intercepted method has a corresponding InterceptedMethodMetadata field
                 subclass.getFieldCreator("arc$" + methodIdx++, InterceptedMethodMetadata.class.getName())
                         .setModifiers(ACC_PRIVATE);
-                interceptorChainKeys.computeIfAbsent(interception.interceptors, interceptorChainKeysFun);
-                bindingKeys.computeIfAbsent(interception.bindings.stream().map(BindingKey::new).collect(Collectors.toList()),
-                        bindingsFun);
             }
         }
 
         // Split initialization of InterceptedMethodMetadata into multiple methods
-        int group = 0;
+        IntegerHolder groupId = new IntegerHolder();
         int groupLimit = 30;
-        MethodCreator initMetadataMethod = null;
 
-        // to avoid repeatedly looking for the exact same thing in the maps
-        Map<String, ResultHandle> chainHandles = new HashMap<>();
-        Map<String, ResultHandle> bindingsHandles = new HashMap<>();
+        class InitMethodKey {
+            private final List<InterceptorInfo> interceptors;
+            private final List<BindingKey> bindings;
+
+            InitMethodKey(InterceptionInfo interception) {
+                this.interceptors = interception.interceptors;
+                this.bindings = interception.bindings.stream().map(BindingKey::new).collect(Collectors.toList());
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o)
+                    return true;
+                if (!(o instanceof InitMethodKey))
+                    return false;
+                InitMethodKey that = (InitMethodKey) o;
+                return Objects.equals(interceptors, that.interceptors) && Objects.equals(bindings, that.bindings);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(interceptors, bindings);
+            }
+        }
+
+        class InitMethodData {
+            private final int id;
+            private final InterceptionInfo interception;
+
+            private int counter = 0;
+            private int group = 0;
+            private MethodCreator current = null;
+
+            InitMethodData(InterceptionInfo interception) {
+                this.id = groupId.i++;
+                this.interception = interception;
+            }
+
+            MethodCreator getMethodCreator() {
+                counter++;
+                if (current == null || counter >= groupLimit) {
+                    finish();
+                    current = subclass
+                            .getMethodCreator("arc$initMetadata" + id + "_" + group, void.class, List.class, Set.class)
+                            .setModifiers(ACC_PRIVATE);
+                    group++;
+                    counter = 0;
+                }
+                return current;
+            }
+
+            void finish() {
+                if (current != null) {
+                    // End the bytecode of the current arc$initMetadataX method
+                    current.returnVoid();
+                    current.close();
+
+                    ResultHandle interceptorChain = interceptorChains.computeIfAbsent(
+                            interception.interceptors, interceptorChainKeysFun);
+                    ResultHandle bindingSet = bindings.computeIfAbsent(
+                            interception.bindings.stream().map(BindingKey::new).collect(Collectors.toList()), bindingsFun);
+
+                    // Invoke arc$initMetadataX(interceptorChain, bindings) in the constructor
+                    constructor.invokeVirtualMethod(current.getMethodDescriptor(), constructor.getThis(),
+                            interceptorChain, bindingSet);
+
+                    current = null;
+                }
+            }
+        }
+
+        Map<InitMethodKey, InitMethodData> initMethods = new HashMap<>();
 
         methodIdx = 1;
         for (MethodInfo method : interceptedOrDecoratedMethods) {
-            if (initMetadataMethod == null || methodIdx >= (group * groupLimit)) {
-                if (initMetadataMethod != null) {
-                    // End the bytecode of the current initMetadata method
-                    initMetadataMethod.returnVoid();
-                    initMetadataMethod.close();
-                    // Invoke arc$initMetadataX(interceptorChainMap,bindingsMap) in the constructor
-                    constructor.invokeVirtualMethod(initMetadataMethod.getMethodDescriptor(), constructor.getThis(),
-                            interceptorChainMap, bindingsMap);
-                }
-                initMetadataMethod = subclass.getMethodCreator("arc$initMetadata" + group++, void.class, Map.class, Map.class)
-                        .setModifiers(ACC_PRIVATE);
-                chainHandles.clear();
-                bindingsHandles.clear();
-            }
-
             MethodDescriptor methodDescriptor = MethodDescriptor.of(method);
             InterceptionInfo interception = bean.getInterceptedMethods().get(method);
             DecorationInfo decoration = bean.getDecoratedMethods().get(method);
@@ -355,14 +382,12 @@ public class SubclassGenerator extends AbstractGenerator {
             List<Type> parameters = method.parameterTypes();
 
             if (interception != null) {
-                final MethodCreator initMetadataMethodFinal = initMetadataMethod;
+                MethodCreator initMetadataMethod = initMethods
+                        .computeIfAbsent(new InitMethodKey(interception), ignored -> new InitMethodData(interception))
+                        .getMethodCreator();
 
                 // 1. Interceptor chain
-                String interceptorChainKey = interceptorChainKeys.get(interception.interceptors);
-                ResultHandle chainHandle = chainHandles.computeIfAbsent(interceptorChainKey, ignored -> {
-                    return initMetadataMethodFinal.invokeInterfaceMethod(MethodDescriptors.MAP_GET,
-                            initMetadataMethodFinal.getMethodParam(0), initMetadataMethodFinal.load(interceptorChainKey));
-                });
+                ResultHandle chainHandle = initMetadataMethod.getMethodParam(0);
 
                 // 2. Method method = Reflections.findMethod(org.jboss.weld.arc.test.interceptors.SimpleBean.class,"foo",java.lang.String.class)
                 ResultHandle[] paramsHandles = new ResultHandle[3];
@@ -384,13 +409,7 @@ public class SubclassGenerator extends AbstractGenerator {
                         paramsHandles);
 
                 // 3. Interceptor bindings
-                // Note that we use a shared list if possible
-                String bindingKey = bindingKeys.get(
-                        interception.bindings.stream().map(BindingKey::new).collect(Collectors.toList()));
-                ResultHandle bindingsHandle = bindingsHandles.computeIfAbsent(bindingKey, ignored -> {
-                    return initMetadataMethodFinal.invokeInterfaceMethod(MethodDescriptors.MAP_GET,
-                            initMetadataMethodFinal.getMethodParam(1), initMetadataMethodFinal.load(bindingKey));
-                });
+                ResultHandle bindingsHandle = initMetadataMethod.getMethodParam(1);
 
                 // Now create metadata for the given intercepted method
                 ResultHandle methodMetadataHandle = initMetadataMethod.newInstance(
@@ -448,12 +467,8 @@ public class SubclassGenerator extends AbstractGenerator {
             }
         }
 
-        if (initMetadataMethod != null) {
-            // Make sure we end the bytecode of the last initMetadata method
-            initMetadataMethod.returnVoid();
-            // Invoke arc$initMetadataX(interceptorChainMap,bindingsMap) in the constructor
-            constructor.invokeVirtualMethod(initMetadataMethod.getMethodDescriptor(), constructor.getThis(),
-                    interceptorChainMap, bindingsMap);
+        for (InitMethodData initMethod : initMethods.values()) {
+            initMethod.finish();
         }
 
         constructor.writeInstanceField(constructedField.getFieldDescriptor(), constructor.getThis(), constructor.load(true));
