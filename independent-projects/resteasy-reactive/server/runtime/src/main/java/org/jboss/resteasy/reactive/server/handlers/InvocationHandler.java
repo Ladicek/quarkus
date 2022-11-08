@@ -1,13 +1,14 @@
 package org.jboss.resteasy.reactive.server.handlers;
 
 import org.jboss.resteasy.reactive.server.core.ResteasyReactiveRequestContext;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler;
 
-public class InvocationHandler implements ServerRestHandler {
-    private final EndpointInvoker invoker;
+import io.quarkus.arc.Invoker;
 
-    public InvocationHandler(EndpointInvoker invoker) {
+public class InvocationHandler implements ServerRestHandler {
+    private final Invoker<Object, Object> invoker;
+
+    public InvocationHandler(Invoker<Object, Object> invoker) {
         this.invoker = invoker;
     }
 

@@ -126,6 +126,7 @@ import io.quarkus.arc.deployment.BeanArchiveIndexBuildItem;
 import io.quarkus.arc.deployment.BeanContainerBuildItem;
 import io.quarkus.arc.deployment.GeneratedBeanBuildItem;
 import io.quarkus.arc.deployment.UnremovableBeanBuildItem;
+import io.quarkus.arc.deployment.ValidationPhaseBuildItem;
 import io.quarkus.arc.runtime.BeanContainer;
 import io.quarkus.deployment.Capabilities;
 import io.quarkus.deployment.Capability;
@@ -388,12 +389,14 @@ public class ResteasyReactiveProcessor {
     public void setupEndpoints(ApplicationIndexBuildItem applicationIndexBuildItem,
             BeanArchiveIndexBuildItem beanArchiveIndexBuildItem,
             BeanContainerBuildItem beanContainerBuildItem,
+            ValidationPhaseBuildItem arcValidationPhase,
             ResteasyReactiveConfig config,
             Optional<ResourceScanningResultBuildItem> resourceScanningResultBuildItem,
             BuildProducer<GeneratedClassBuildItem> generatedClassBuildItemBuildProducer,
             BuildProducer<BytecodeTransformerBuildItem> bytecodeTransformerBuildItemBuildProducer,
             BuildProducer<ReflectiveClassBuildItem> reflectiveClassBuildItemBuildProducer,
             ResteasyReactiveRecorder recorder,
+            RecorderContext recorderContext,
             List<ServerDefaultProducesHandlerBuildItem> serverDefaultProducesHandlers,
             Optional<ClassLevelExceptionMappersBuildItem> classLevelExceptionMappers,
             BuildProducer<SetupEndpointsResultBuildItem> setupEndpointsResultProducer,
@@ -473,8 +476,7 @@ public class ResteasyReactiveProcessor {
                     .addParameterContainerTypes(scannedParameterContainers)
                     .addContextTypes(additionalContextTypes(contextTypeBuildItems))
                     .setFactoryCreator(new QuarkusFactoryCreator(recorder, beanContainerBuildItem.getValue()))
-                    .setEndpointInvokerFactory(
-                            new QuarkusInvokerFactory(generatedClassBuildItemBuildProducer, recorder))
+                    .setEndpointInvokerFactory(new QuarkusInvokerFactory(recorderContext, arcValidationPhase.getBeanResolver()))
                     .setGeneratedClassBuildItemBuildProducer(generatedClassBuildItemBuildProducer)
                     .setExistingConverters(existingConverters)
                     .setScannedResourcePaths(scannedResourcePaths)

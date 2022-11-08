@@ -93,7 +93,8 @@ import org.jboss.resteasy.reactive.server.providers.serialisers.jsonp.ServerJson
 import org.jboss.resteasy.reactive.server.providers.serialisers.jsonp.ServerJsonObjectHandler;
 import org.jboss.resteasy.reactive.server.providers.serialisers.jsonp.ServerJsonStructureHandler;
 import org.jboss.resteasy.reactive.server.providers.serialisers.jsonp.ServerJsonValueHandler;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
+
+import io.quarkus.arc.Invoker;
 
 public class ServerEndpointIndexer
         extends EndpointIndexer<ServerEndpointIndexer, ServerIndexedParameter, ServerResourceMethod> {
@@ -215,7 +216,7 @@ public class ServerEndpointIndexer
     @Override
     protected void handleAdditionalMethodProcessing(ServerResourceMethod method, ClassInfo currentClassInfo, MethodInfo info,
             AnnotationStore annotationStore) {
-        Supplier<EndpointInvoker> invokerSupplier = null;
+        Supplier<Invoker<Object, Object>> invokerSupplier = null;
         for (HandlerChainCustomizer i : method.getHandlerChainCustomizers()) {
             invokerSupplier = i.alternateInvoker(method);
             if (invokerSupplier != null) {

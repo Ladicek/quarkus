@@ -4,7 +4,6 @@ import static io.quarkus.resteasy.reactive.server.runtime.NotFoundExceptionMappe
 import static io.quarkus.vertx.http.runtime.security.HttpSecurityRecorder.DefaultAuthFailureHandler.extractRootCause;
 
 import java.io.Closeable;
-import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -29,8 +28,6 @@ import org.jboss.resteasy.reactive.server.core.ServerSerialisers;
 import org.jboss.resteasy.reactive.server.core.startup.RuntimeDeploymentManager;
 import org.jboss.resteasy.reactive.server.handlers.RestInitialHandler;
 import org.jboss.resteasy.reactive.server.model.ContextResolvers;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvokerFactory;
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler;
 import org.jboss.resteasy.reactive.server.util.RuntimeResourceVisitor;
 import org.jboss.resteasy.reactive.server.util.ScoreSystem;
@@ -66,7 +63,7 @@ import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 
 @Recorder
-public class ResteasyReactiveRecorder extends ResteasyReactiveCommonRecorder implements EndpointInvokerFactory {
+public class ResteasyReactiveRecorder extends ResteasyReactiveCommonRecorder {
 
     static final Logger logger = Logger.getLogger("io.quarkus");
 
@@ -272,22 +269,6 @@ public class ResteasyReactiveRecorder extends ResteasyReactiveCommonRecorder imp
     public void registerContextResolver(ContextResolvers contextResolvers, String string,
             ResourceContextResolver resolver) {
         contextResolvers.addContextResolver(loadClass(string), resolver);
-    }
-
-    @Override
-    public Supplier<EndpointInvoker> invoker(String baseName) {
-        return new Supplier<EndpointInvoker>() {
-            @Override
-            public EndpointInvoker get() {
-                try {
-                    return (EndpointInvoker) loadClass(baseName).getDeclaredConstructor().newInstance();
-                } catch (IllegalAccessException | InstantiationException | NoSuchMethodException
-                        | InvocationTargetException e) {
-                    throw new RuntimeException("Unable to generate endpoint invoker", e);
-                }
-
-            }
-        };
     }
 
     public Function<Class<?>, BeanFactory<?>> factoryCreator(BeanContainer container) {

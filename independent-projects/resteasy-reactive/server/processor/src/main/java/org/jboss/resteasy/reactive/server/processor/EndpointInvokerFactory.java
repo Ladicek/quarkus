@@ -5,9 +5,10 @@ import java.util.function.Supplier;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.MethodInfo;
 import org.jboss.resteasy.reactive.common.model.ResourceMethod;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
+
+import io.quarkus.arc.Invoker;
 
 public interface EndpointInvokerFactory {
 
-    Supplier<EndpointInvoker> create(ResourceMethod method, ClassInfo currentClass, MethodInfo currentMethod);
+    Supplier<Invoker<Object, Object>> create(ResourceMethod method, ClassInfo currentClass, MethodInfo currentMethod);
 }

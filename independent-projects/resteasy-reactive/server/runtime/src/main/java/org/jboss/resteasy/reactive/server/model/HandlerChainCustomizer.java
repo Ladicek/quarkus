@@ -11,9 +11,10 @@ import org.jboss.resteasy.reactive.RestResponse;
 import org.jboss.resteasy.reactive.common.model.ResourceClass;
 import org.jboss.resteasy.reactive.server.handlers.PublisherResponseHandler;
 import org.jboss.resteasy.reactive.server.handlers.ResponseHandler;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler;
 import org.jboss.resteasy.reactive.server.spi.StreamingResponse;
+
+import io.quarkus.arc.Invoker;
 
 public interface HandlerChainCustomizer {
 
@@ -33,7 +34,7 @@ public interface HandlerChainCustomizer {
      *
      * @param invoker
      */
-    default ServerRestHandler alternateInvocationHandler(EndpointInvoker invoker) {
+    default ServerRestHandler alternateInvocationHandler(Invoker<Object, Object> invoker) {
         return null;
     }
 
@@ -44,7 +45,7 @@ public interface HandlerChainCustomizer {
      *
      * @param method
      */
-    default Supplier<EndpointInvoker> alternateInvoker(ServerResourceMethod method) {
+    default Supplier<Invoker<Object, Object>> alternateInvoker(ServerResourceMethod method) {
         return null;
     }
 

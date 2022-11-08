@@ -8,11 +8,12 @@ import java.util.function.Supplier;
 import org.jboss.resteasy.reactive.common.model.MethodParameter;
 import org.jboss.resteasy.reactive.common.model.ResourceMethod;
 import org.jboss.resteasy.reactive.server.core.parameters.ParameterExtractor;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
+
+import io.quarkus.arc.Invoker;
 
 public class ServerResourceMethod extends ResourceMethod {
 
-    private Supplier<EndpointInvoker> invoker;
+    private Supplier<Invoker<Object, Object>> invoker;
 
     private Set<String> methodAnnotationNames;
 
@@ -25,9 +26,9 @@ public class ServerResourceMethod extends ResourceMethod {
     public ServerResourceMethod(String httpMethod, String path, String[] produces, String streamElementType, String[] consumes,
             Set<String> nameBindingNames, String name, String returnType, String simpleReturnType, MethodParameter[] parameters,
             boolean blocking, boolean suspended, boolean sse, boolean formParamRequired,
-            List<ResourceMethod> subResourceMethods, Supplier<EndpointInvoker> invoker, Set<String> methodAnnotationNames,
-            List<HandlerChainCustomizer> handlerChainCustomizers, ParameterExtractor customerParameterExtractor,
-            boolean encoded) {
+            List<ResourceMethod> subResourceMethods, Supplier<Invoker<Object, Object>> invoker,
+            Set<String> methodAnnotationNames, List<HandlerChainCustomizer> handlerChainCustomizers,
+            ParameterExtractor customerParameterExtractor, boolean encoded) {
         super(httpMethod, path, produces, streamElementType, consumes, nameBindingNames, name, returnType, simpleReturnType,
                 parameters, blocking, suspended, sse, formParamRequired, subResourceMethods, encoded);
         this.invoker = invoker;
@@ -36,11 +37,11 @@ public class ServerResourceMethod extends ResourceMethod {
         this.customerParameterExtractor = customerParameterExtractor;
     }
 
-    public Supplier<EndpointInvoker> getInvoker() {
+    public Supplier<Invoker<Object, Object>> getInvoker() {
         return invoker;
     }
 
-    public ResourceMethod setInvoker(Supplier<EndpointInvoker> invoker) {
+    public ResourceMethod setInvoker(Supplier<Invoker<Object, Object>> invoker) {
         this.invoker = invoker;
         return this;
     }

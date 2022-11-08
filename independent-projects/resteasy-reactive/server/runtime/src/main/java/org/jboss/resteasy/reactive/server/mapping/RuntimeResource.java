@@ -10,11 +10,12 @@ import org.jboss.resteasy.reactive.common.model.ResourceExceptionMapper;
 import org.jboss.resteasy.reactive.common.util.ServerMediaType;
 import org.jboss.resteasy.reactive.server.SimpleResourceInfo;
 import org.jboss.resteasy.reactive.server.core.ResteasyReactiveSimplifiedResourceInfo;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
 import org.jboss.resteasy.reactive.server.spi.ResteasyReactiveResourceInfo;
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler;
 import org.jboss.resteasy.reactive.server.util.ScoreSystem;
 import org.jboss.resteasy.reactive.spi.BeanFactory;
+
+import io.quarkus.arc.Invoker;
 
 public class RuntimeResource {
 
@@ -23,7 +24,7 @@ public class RuntimeResource {
     private final URITemplate classPath;
     private final ServerMediaType produces;
     private final List<MediaType> consumes;
-    private final EndpointInvoker invoker;
+    private final Invoker<Object, Object> invoker;
     private final BeanFactory<Object> endpointFactory;
     private final ServerRestHandler[] handlerChain;
     private final String javaMethodName;
@@ -40,7 +41,7 @@ public class RuntimeResource {
 
     public RuntimeResource(String httpMethod, URITemplate path, URITemplate classPath, ServerMediaType produces,
             List<MediaType> consumes,
-            EndpointInvoker invoker,
+            Invoker<Object, Object> invoker,
             BeanFactory<Object> endpointFactory, ServerRestHandler[] handlerChain, String javaMethodName,
             Class<?>[] parameterTypes,
             Type returnType, boolean blocking, boolean runOnVirtualThread, Class<?> resourceClass,
@@ -101,7 +102,7 @@ public class RuntimeResource {
         return consumes;
     }
 
-    public EndpointInvoker getInvoker() {
+    public Invoker<Object, Object> getInvoker() {
         return invoker;
     }
 

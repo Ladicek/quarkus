@@ -26,7 +26,6 @@ import org.jboss.resteasy.reactive.common.processor.transformation.AnnotationSto
 import org.jboss.resteasy.reactive.server.model.ServerResourceMethod;
 import org.jboss.resteasy.reactive.server.processor.ServerEndpointIndexer;
 import org.jboss.resteasy.reactive.server.processor.ServerIndexedParameter;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvokerFactory;
 
 import io.quarkus.builder.BuildException;
 import io.quarkus.deployment.Capabilities;
@@ -100,7 +99,6 @@ public class QuarkusServerEndpointIndexer
     protected boolean handleCustomParameter(Map<DotName, AnnotationInstance> anns, ServerIndexedParameter builder,
             Type paramType, boolean field, Map<String, Object> methodContext) {
         methodContext.put(GeneratedClassBuildItem.class.getName(), generatedClassBuildItemBuildProducer);
-        methodContext.put(EndpointInvokerFactory.class.getName(), resteasyReactiveRecorder);
         return super.handleCustomParameter(anns, builder, paramType, field, methodContext);
     }
 

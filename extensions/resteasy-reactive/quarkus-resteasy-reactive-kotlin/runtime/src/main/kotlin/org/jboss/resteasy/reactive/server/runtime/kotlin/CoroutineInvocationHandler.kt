@@ -1,18 +1,19 @@
 package org.jboss.resteasy.reactive.server.runtime.kotlin
 
+import io.quarkus.arc.Invoker
 import io.vertx.core.Vertx
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.jboss.resteasy.reactive.server.core.ResteasyReactiveRequestContext
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger(CoroutineInvocationHandler::class.java)
 
 class CoroutineInvocationHandler(
-    private val invoker: EndpointInvoker,
+    private val invoker: Invoker<Any?, Any?>,
     private val coroutineScope: CoroutineScope
 ) : ServerRestHandler {
 
@@ -20,10 +21,6 @@ class CoroutineInvocationHandler(
 
     override fun handle(requestContext: ResteasyReactiveRequestContext) {
         if (requestContext.result != null) {
-            return
-        }
-        if (invoker !is CoroutineEndpointInvoker) {
-            requestContext.handleException(IllegalStateException("Not a coroutine invoker"), true)
             return
         }
 
@@ -39,11 +36,11 @@ class CoroutineInvocationHandler(
             // ensure the proper CL is not lost in dev-mode
             Thread.currentThread().contextClassLoader = originalTCCL
             try {
-                val result =
-                    invoker.invokeCoroutine(
-                        requestContext.endpointInstance,
-                        requestContext.parameters
-                    )
+                val result = suspendCoroutine<Any?> { continuation ->
+                    val arguments = requestContext.parameters
+                    arguments[arguments.size - 1] = continuation
+                    invoker.invoke(requestContext.endpointInstance, arguments)
+                }
                 if (result != Unit) {
                     requestContext.result = result
                 }

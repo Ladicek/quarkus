@@ -1,21 +1,13 @@
 package org.jboss.resteasy.reactive.server.runtime.kotlin
 
+import io.quarkus.arc.Invoker
 import jakarta.enterprise.inject.spi.CDI
-import java.util.function.Supplier
 import org.jboss.resteasy.reactive.server.model.HandlerChainCustomizer
-import org.jboss.resteasy.reactive.server.model.ServerResourceMethod
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler
 
-/** Intercepts method invocations to force an EndpointInvoker. */
+/** Intercepts method invocations to force a different InvocationHandler. */
 open class CoroutineMethodProcessor @Deprecated("Used only in synthetic code") constructor() :
     HandlerChainCustomizer {
-
-    constructor(alternativeInvoker: Supplier<EndpointInvoker>) : this() {
-        this.alternativeInvoker = alternativeInvoker
-    }
-
-    lateinit var alternativeInvoker: Supplier<EndpointInvoker>
 
     // not pretty, but this seems to be a limitation of the current method scanning process
     // the HandlerChainCustomizer is called in a build step, but also at runtime to actually create
@@ -25,11 +17,7 @@ open class CoroutineMethodProcessor @Deprecated("Used only in synthetic code") c
         CDI.current().select(CoroutineInvocationHandlerFactory::class.java).get()
     }
 
-    override fun alternateInvocationHandler(invoker: EndpointInvoker): ServerRestHandler {
+    override fun alternateInvocationHandler(invoker: Invoker<Any?, Any?>): ServerRestHandler {
         return handlerFactory.createHandler(invoker)
-    }
-
-    override fun alternateInvoker(method: ServerResourceMethod): Supplier<EndpointInvoker>? {
-        return alternativeInvoker
     }
 }

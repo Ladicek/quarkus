@@ -10,31 +10,34 @@ import org.jboss.jandex.MethodInfo;
 import org.jboss.jandex.PrimitiveType;
 import org.jboss.jandex.Type;
 import org.jboss.resteasy.reactive.common.model.ResourceMethod;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
+
+import io.quarkus.arc.Invoker;
 
 public class ReflectionEndpointInvokerFactory implements EndpointInvokerFactory {
 
     @Override
-    public Supplier<EndpointInvoker> create(ResourceMethod method, ClassInfo currentClass,
+    public Supplier<Invoker<Object, Object>> create(ResourceMethod method, ClassInfo currentClass,
             MethodInfo currentMethod) {
-        return new Supplier<EndpointInvoker>() {
+        return new Supplier<Invoker<Object, Object>>() {
             @Override
-            public EndpointInvoker get() {
+            public Invoker<Object, Object> get() {
 
                 try {
                     Class<?> clazz = Class.forName(currentMethod.declaringClass().name().toString(), false,
                             Thread.currentThread().getContextClassLoader());
                     Method meth = clazz.getDeclaredMethod(currentMethod.name(), toParamArray(currentMethod.parameterTypes()));
-                    return new EndpointInvoker() {
+                    return new Invoker<Object, Object>() {
                         @Override
-                        public Object invoke(Object instance, Object[] parameters) throws Exception {
+                        public Object invoke(Object instance, Object[] parameters) {
                             try {
                                 return meth.invoke(instance, parameters);
                             } catch (InvocationTargetException e) {
                                 if (e.getCause() instanceof Exception) {
-                                    throw (Exception) e.getCause();
+                                    throw sneakyThrow(e.getCause());
                                 }
-                                throw e;
+                                throw sneakyThrow(e);
+                            } catch (IllegalAccessException e) {
+                                throw sneakyThrow(e);
                             }
                         }
                     };
@@ -84,5 +87,10 @@ public class ReflectionEndpointInvokerFactory implements EndpointInvokerFactory 
                 }
             }
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    static <E extends Throwable> RuntimeException sneakyThrow(Throwable e) throws E {
+        throw (E) e;
     }
 }

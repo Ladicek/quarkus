@@ -90,12 +90,13 @@ import org.jboss.resteasy.reactive.server.model.HandlerChainCustomizer;
 import org.jboss.resteasy.reactive.server.model.ParamConverterProviders;
 import org.jboss.resteasy.reactive.server.model.ServerMethodParameter;
 import org.jboss.resteasy.reactive.server.model.ServerResourceMethod;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
 import org.jboss.resteasy.reactive.server.spi.ResteasyReactiveResourceInfo;
 import org.jboss.resteasy.reactive.server.spi.ServerMessageBodyWriter;
 import org.jboss.resteasy.reactive.server.spi.ServerRestHandler;
 import org.jboss.resteasy.reactive.server.util.ScoreSystem;
 import org.jboss.resteasy.reactive.spi.BeanFactory;
+
+import io.quarkus.arc.Invoker;
 
 @SuppressWarnings("ForLoopReplaceableByForEach")
 public class RuntimeResourceDeployment {
@@ -380,7 +381,7 @@ public class RuntimeResourceDeployment {
                     param.isObtainedAsCollection(), param.isOptional()));
         }
         addHandlers(handlers, clazz, method, info, HandlerChainCustomizer.Phase.BEFORE_METHOD_INVOKE);
-        EndpointInvoker invoker = method.getInvoker().get();
+        Invoker<Object, Object> invoker = method.getInvoker().get();
         ServerRestHandler alternate = alternateInvoker(method, invoker);
         if (alternate != null) {
             handlers.add(alternate);
@@ -626,7 +627,7 @@ public class RuntimeResourceDeployment {
         return originalHandlersSize != handlers.size();
     }
 
-    private ServerRestHandler alternateInvoker(ServerResourceMethod method, EndpointInvoker invoker) {
+    private ServerRestHandler alternateInvoker(ServerResourceMethod method, Invoker<Object, Object> invoker) {
         for (int i = 0; i < method.getHandlerChainCustomizers().size(); i++) {
             ServerRestHandler ret = method.getHandlerChainCustomizers().get(i).alternateInvocationHandler(invoker);
             if (ret != null) {

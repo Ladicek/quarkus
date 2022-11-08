@@ -1,68 +1,35 @@
 package io.quarkus.resteasy.reactive.server.deployment;
 
-import java.lang.reflect.Modifier;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.MethodInfo;
 import org.jboss.jandex.Type;
-import org.jboss.resteasy.reactive.common.model.MethodParameter;
 import org.jboss.resteasy.reactive.common.model.ResourceMethod;
-import org.jboss.resteasy.reactive.common.processor.HashUtil;
 import org.jboss.resteasy.reactive.server.processor.EndpointInvokerFactory;
-import org.jboss.resteasy.reactive.server.spi.EndpointInvoker;
 
-import io.quarkus.deployment.GeneratedClassGizmoAdaptor;
-import io.quarkus.deployment.annotations.BuildProducer;
-import io.quarkus.deployment.builditem.GeneratedClassBuildItem;
-import io.quarkus.gizmo.ClassCreator;
-import io.quarkus.gizmo.MethodCreator;
-import io.quarkus.gizmo.ResultHandle;
-import io.quarkus.resteasy.reactive.server.runtime.ResteasyReactiveRecorder;
+import io.quarkus.arc.Invoker;
+import io.quarkus.arc.processor.BeanInfo;
+import io.quarkus.arc.processor.BeanResolver;
+import io.quarkus.arc.processor.InvokerInfo;
+import io.quarkus.deployment.recording.RecorderContext;
 
 public class QuarkusInvokerFactory implements EndpointInvokerFactory {
 
-    final BuildProducer<GeneratedClassBuildItem> generatedClassBuildItemBuildProducer;
-    final ResteasyReactiveRecorder recorder;
+    final RecorderContext recorderContext;
+    final BeanResolver beanResolver;
 
-    public QuarkusInvokerFactory(BuildProducer<GeneratedClassBuildItem> generatedClassBuildItemBuildProducer,
-            ResteasyReactiveRecorder recorder) {
-        this.generatedClassBuildItemBuildProducer = generatedClassBuildItemBuildProducer;
-        this.recorder = recorder;
+    public QuarkusInvokerFactory(RecorderContext recorderContext, BeanResolver beanResolver) {
+        this.recorderContext = recorderContext;
+        this.beanResolver = beanResolver;
     }
 
     @Override
-    public Supplier<EndpointInvoker> create(ResourceMethod method, ClassInfo currentClassInfo, MethodInfo info) {
-
-        StringBuilder sigBuilder = new StringBuilder();
-        sigBuilder.append(method.getName())
-                .append(method.getReturnType());
-        for (MethodParameter t : method.getParameters()) {
-            sigBuilder.append(t);
-        }
-        String baseName = currentClassInfo.name() + "$quarkusrestinvoker$" + method.getName() + "_"
-                + HashUtil.sha1(sigBuilder.toString());
-        try (ClassCreator classCreator = new ClassCreator(
-                new GeneratedClassGizmoAdaptor(generatedClassBuildItemBuildProducer, true), baseName, null,
-                Object.class.getName(), EndpointInvoker.class.getName())) {
-            MethodCreator mc = classCreator.getMethodCreator("invoke", Object.class, Object.class, Object[].class);
-            ResultHandle[] args = new ResultHandle[method.getParameters().length];
-            ResultHandle array = mc.getMethodParam(1);
-            for (int i = 0; i < method.getParameters().length; ++i) {
-                args[i] = mc.readArrayValue(array, i);
-            }
-            ResultHandle res;
-            if (Modifier.isInterface(currentClassInfo.flags())) {
-                res = mc.invokeInterfaceMethod(info, mc.getMethodParam(0), args);
-            } else {
-                res = mc.invokeVirtualMethod(info, mc.getMethodParam(0), args);
-            }
-            if (info.returnType().kind() == Type.Kind.VOID) {
-                mc.returnValue(mc.loadNull());
-            } else {
-                mc.returnValue(res);
-            }
-        }
-        return recorder.invoker(baseName);
+    public Supplier<Invoker<Object, Object>> create(ResourceMethod method, ClassInfo currentClassInfo, MethodInfo info) {
+        Set<BeanInfo> candidates = beanResolver.resolveBeans(Type.create(currentClassInfo.name(), Type.Kind.CLASS));
+        BeanInfo bean = beanResolver.resolveAmbiguity(candidates);
+        InvokerInfo invoker = bean.createInvoker(info).build();
+        return recorderContext.staticInstance(invoker.getClassName(), Invoker.class);
     }
 }
