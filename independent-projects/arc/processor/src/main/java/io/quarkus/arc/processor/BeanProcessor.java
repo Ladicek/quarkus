@@ -48,11 +48,15 @@ import io.quarkus.gizmo.BytecodeCreator;
  * <li>{@link #registerCustomContexts()}</li>
  * <li>{@link #registerScopes()}</li>
  * <li>{@link #registerBeans()}</li>
- * <li>{@link #initialize(Consumer)}</li>
+ * <li>{@link BeanDeployment#initBeanByTypeMap()}</li>
+ * <li>{@link #registerSyntheticObservers()}</li>
+ * <li>{@link #initialize(Consumer, List)}</li>
  * <li>{@link #validate(Consumer)}</li>
  * <li>{@link #processValidationErrors(io.quarkus.arc.processor.BeanDeploymentValidator.ValidationContext)}</li>
- * <li>{@link #generateResources(ReflectionRegistration, Set, Consumer)}</li>
+ * <li>{@link #generateResources(ReflectionRegistration, Set, Consumer, boolean, ExecutorService)}</li>
  * </ol>
+ *
+ * @see #process()
  */
 public class BeanProcessor {
 
@@ -208,7 +212,6 @@ public class BeanProcessor {
         for (InterceptorInfo interceptor : interceptors) {
             interceptorGenerator.precomputeGeneratedName(interceptor);
         }
-        interceptors.forEach(interceptorGenerator::precomputeGeneratedName);
 
         DecoratorGenerator decoratorGenerator = new DecoratorGenerator(annotationLiterals, applicationClassPredicate,
                 privateMembers, generateSources, refReg, existingClasses, beanToGeneratedName,
@@ -231,6 +234,10 @@ public class BeanProcessor {
 
         CustomAlterableContextsGenerator alterableContextsGenerator = new CustomAlterableContextsGenerator(generateSources);
         List<CustomAlterableContextInfo> alterableContexts = customAlterableContexts.getRegistered();
+
+        InvokerGenerator invokerGenerator = new InvokerGenerator(generateSources,
+                applicationClassPredicate, beanDeployment);
+        Collection<InvokerInfo> invokers = beanDeployment.getInvokers();
 
         List<Resource> resources = new ArrayList<>();
 
@@ -340,6 +347,16 @@ public class BeanProcessor {
                 }));
             }
 
+            // Generate invokers
+            for (InvokerInfo invoker : invokers) {
+                primaryTasks.add(executor.submit(new Callable<Collection<Resource>>() {
+                    @Override
+                    public Collection<Resource> call() throws Exception {
+                        return invokerGenerator.generate(invoker);
+                    }
+                }));
+            }
+
             // Generate `_InjectableContext` subclasses for custom `AlterableContext`s
             for (CustomAlterableContextInfo info : alterableContexts) {
                 primaryTasks.add(executor.submit(new Callable<Collection<Resource>>() {
@@ -406,6 +423,10 @@ public class BeanProcessor {
             // Generate observers
             for (ObserverInfo observer : observers) {
                 resources.addAll(observerGenerator.generate(observer));
+            }
+            // Generate invokers
+            for (InvokerInfo invoker : invokers) {
+                resources.addAll(invokerGenerator.generate(invoker));
             }
 
             // Generate `_InjectableContext` subclasses for custom `AlterableContext`s

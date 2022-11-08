@@ -41,6 +41,7 @@ import jakarta.interceptor.InterceptorBinding;
 
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.InjectableBean;
+import io.quarkus.arc.Invokable;
 
 /**
  * @author Martin Kouba
@@ -175,6 +176,14 @@ public class BeanManagerImpl implements BeanManager {
     public boolean isInterceptorBinding(Class<? extends Annotation> annotationType) {
         return annotationType.isAnnotationPresent(InterceptorBinding.class)
                 || ArcContainerImpl.instance().registeredInterceptorBindings.isRegistered(annotationType);
+    }
+
+/*
+    @Override
+*/
+    public boolean isInvokableMarker(Class<? extends Annotation> annotationType) {
+        return annotationType.isAnnotationPresent(Invokable.class)
+                || ArcContainerImpl.instance().registeredInvokableMarkers.contains(annotationType.getName());
     }
 
     @Override

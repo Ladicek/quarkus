@@ -263,8 +263,9 @@ public final class MethodDescriptors {
             ClassLoader.class);
 
     public static final MethodDescriptor CL_FOR_NAME = MethodDescriptor.ofMethod(Class.class, "forName", Class.class,
-            String.class,
-            boolean.class, ClassLoader.class);
+            String.class, boolean.class, ClassLoader.class);
+
+    public static final MethodDescriptor CLASS_GET_NAME = MethodDescriptor.ofMethod(Class.class, "getName", String.class);
 
     public static final MethodDescriptor REMOVED_BEAN_IMPL = MethodDescriptor.ofConstructor(RemovedBeanImpl.class, Kind.class,
             String.class, Set.class, Set.class);

@@ -94,13 +94,15 @@ public class BeanInfo implements InjectionTargetInfo {
 
     private final List<MethodInfo> aroundInvokes;
 
+    private final Set<MethodInfo> invokableMethods;
+
     BeanInfo(AnnotationTarget target, BeanDeployment beanDeployment, ScopeInfo scope, Set<Type> types,
             Set<AnnotationInstance> qualifiers, List<Injection> injections, BeanInfo declaringBean, DisposerInfo disposer,
             boolean alternative, List<StereotypeInfo> stereotypes, String name, boolean isDefaultBean, String targetPackageName,
-            Integer priority) {
+            Integer priority, Set<MethodInfo> invokableMethods) {
         this(null, null, target, beanDeployment, scope, types, qualifiers, injections, declaringBean, disposer,
                 alternative, stereotypes, name, isDefaultBean, null, null, Collections.emptyMap(), true, false,
-                targetPackageName, priority, null);
+                targetPackageName, priority, invokableMethods, null);
     }
 
     BeanInfo(ClassInfo implClazz, Type providerType, AnnotationTarget target, BeanDeployment beanDeployment, ScopeInfo scope,
@@ -108,7 +110,8 @@ public class BeanInfo implements InjectionTargetInfo {
             DisposerInfo disposer, boolean alternative,
             List<StereotypeInfo> stereotypes, String name, boolean isDefaultBean, Consumer<MethodCreator> creatorConsumer,
             Consumer<MethodCreator> destroyerConsumer, Map<String, Object> params, boolean isRemovable,
-            boolean forceApplicationClass, String targetPackageName, Integer priority, String identifier) {
+            boolean forceApplicationClass, String targetPackageName, Integer priority,
+            Set<MethodInfo> invokableMethods, String identifier) {
 
         this.target = Optional.ofNullable(target);
         if (implClazz == null && target != null) {
@@ -148,6 +151,7 @@ public class BeanInfo implements InjectionTargetInfo {
         this.forceApplicationClass = forceApplicationClass;
         this.targetPackageName = targetPackageName;
         this.aroundInvokes = isInterceptor() || isDecorator() ? List.of() : Beans.getAroundInvokes(implClazz, beanDeployment);
+        this.invokableMethods = invokableMethods == null ? Collections.emptySet() : invokableMethods;
     }
 
     @Override
@@ -410,6 +414,20 @@ public class BeanInfo implements InjectionTargetInfo {
                 || !decoratedMethods.isEmpty()
                 || lifecycleInterceptors.containsKey(InterceptionType.PRE_DESTROY)
                 || !aroundInvokes.isEmpty();
+    }
+
+    public Set<MethodInfo> getInvokableMethods() {
+        return invokableMethods;
+    }
+
+    public InvokerBuilder createInvoker(MethodInfo invokableMethod) {
+        if (!isClassBean()) {
+            throw new IllegalStateException("Invokers may only be built for invokable methods of managed beans: " + this);
+        }
+        if (!invokableMethods.contains(invokableMethod)) {
+            throw new IllegalArgumentException("Not an invokable method: " + invokableMethod);
+        }
+        return new InvokerBuilder(implClazz, invokableMethod, beanDeployment::addInvoker);
     }
 
     /**
@@ -1173,7 +1191,8 @@ public class BeanInfo implements InjectionTargetInfo {
         BeanInfo build() {
             return new BeanInfo(implClazz, providerType, target, beanDeployment, scope, types, qualifiers, injections,
                     declaringBean, disposer, alternative, stereotypes, name, isDefaultBean, creatorConsumer,
-                    destroyerConsumer, params, removable, forceApplicationClass, targetPackageName, priority, identifier);
+                    destroyerConsumer, params, removable, forceApplicationClass, targetPackageName, priority, null,
+                    identifier);
         }
 
         public Builder forceApplicationClass(boolean forceApplicationClass) {

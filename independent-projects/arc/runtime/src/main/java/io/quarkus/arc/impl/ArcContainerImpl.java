@@ -96,6 +96,7 @@ public class ArcContainerImpl implements ArcContainer {
     final InstanceImpl<Object> instance;
     final Qualifiers registeredQualifiers;
     final InterceptorBindings registeredInterceptorBindings;
+    final Set<String> registeredInvokableMarkers;
 
     private volatile ExecutorService executorService;
 
@@ -117,6 +118,7 @@ public class ArcContainerImpl implements ArcContainer {
         Map<Class<? extends Annotation>, Set<Annotation>> transitiveInterceptorBindings = new HashMap<>();
         Map<String, Set<String>> qualifierNonbindingMembers = new HashMap<>();
         Set<String> qualifiers = new HashSet<>();
+        Set<String> invokableMarkers = new HashSet<>();
         this.currentContextFactory = currentContextFactory == null ? new ThreadLocalCurrentContextFactory()
                 : currentContextFactory;
 
@@ -142,6 +144,7 @@ public class ArcContainerImpl implements ArcContainer {
             transitiveInterceptorBindings.putAll(c.getTransitiveInterceptorBindings());
             qualifierNonbindingMembers.putAll(c.getQualifierNonbindingMembers());
             qualifiers.addAll(c.getQualifiers());
+            invokableMarkers.addAll(c.getInvokableMarkers());
         }
 
         // register built-in beans
@@ -189,6 +192,7 @@ public class ArcContainerImpl implements ArcContainer {
         });
         this.registeredQualifiers = new Qualifiers(qualifiers, qualifierNonbindingMembers);
         this.registeredInterceptorBindings = new InterceptorBindings(interceptorBindings, transitiveInterceptorBindings);
+        this.registeredInvokableMarkers = invokableMarkers;
 
         Contexts.Builder contextsBuilder = new Contexts.Builder(
                 new RequestContext(this.currentContextFactory.create(RequestScoped.class),

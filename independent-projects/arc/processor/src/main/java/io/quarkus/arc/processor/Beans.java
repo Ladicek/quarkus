@@ -190,7 +190,7 @@ public final class Beans {
         List<Injection> injections = Injection.forBean(producerMethod, declaringBean, beanDeployment, transformer,
                 Injection.BeanType.PRODUCER_METHOD);
         BeanInfo bean = new BeanInfo(producerMethod, beanDeployment, scope, beanTypes, qualifiers, injections, declaringBean,
-                disposer, isAlternative, stereotypes, name, isDefaultBean, null, priority);
+                disposer, isAlternative, stereotypes, name, isDefaultBean, null, priority, null);
         for (Injection injection : injections) {
             injection.init(bean);
         }
@@ -302,7 +302,8 @@ public final class Beans {
         }
 
         BeanInfo bean = new BeanInfo(producerField, beanDeployment, scope, types, qualifiers, Collections.emptyList(),
-                declaringBean, disposer, isAlternative, stereotypes, name, isDefaultBean, null, priority);
+                declaringBean, disposer, isAlternative, stereotypes, name, isDefaultBean, null, priority,
+                null);
         return bean;
     }
 
@@ -1055,6 +1056,69 @@ public final class Beans {
         return alternativePriority;
     }
 
+    static Set<MethodInfo> findInvokableMethods(BeanDeployment beanDeployment, ClassInfo beanClass) {
+        Set<MethodInfo> result = new HashSet<>();
+
+        // first, set up the work queue so that it contains the bean class and all its superclasses
+        // next, as each class from the queue is processed, add its interfaces to the queue
+        // this is so that superclasses are processed before interfaces
+        Deque<ClassInfo> workQueue = new ArrayDeque<>();
+        {
+            ClassInfo current = beanClass;
+            while (current != null) {
+                workQueue.addLast(current);
+                current = current.superName() == null
+                        ? null
+                        : getClassByName(beanDeployment.getBeanArchiveIndex(), current.superName());
+            }
+        }
+
+        Set<Methods.MethodKey> seenMethods = new HashSet<>();
+        while (!workQueue.isEmpty()) {
+            ClassInfo current = workQueue.removeFirst();
+
+            // TODO what if an invokable marker annotation is @Inherited?
+            boolean classInvokable = false;
+            for (AnnotationInstance ann : beanDeployment.getAnnotations(current)) {
+                if (beanDeployment.isInvokableMarker(ann.name())) {
+                    classInvokable = true;
+                    break;
+                }
+            }
+
+            for (MethodInfo method : current.methods()) {
+                Methods.MethodKey methodDescriptor = new Methods.MethodKey(method);
+                if (method.isSynthetic()
+                        || method.isConstructor()
+                        || "<clinit>".equals(method.name()) // TODO Jandex should expose this
+                        || Modifier.isPrivate(method.flags())
+                        || Methods.isOverriden(methodDescriptor, seenMethods)) {
+                    continue;
+                }
+                seenMethods.add(methodDescriptor);
+
+                boolean methodInvokable = false;
+                for (AnnotationInstance ann : beanDeployment.getAnnotations(method)) {
+                    if (beanDeployment.isInvokableMarker(ann.name())) {
+                        methodInvokable = true;
+                        break;
+                    }
+                }
+
+                if (methodInvokable || classInvokable) {
+                    result.add(method);
+                }
+            }
+
+            for (DotName iface : current.interfaceNames()) {
+                ClassInfo ifaceClass = getClassByName(beanDeployment.getBeanArchiveIndex(), iface);
+                workQueue.addLast(ifaceClass);
+            }
+        }
+
+        return result;
+    }
+
     static class FinalClassTransformFunction implements BiFunction<String, ClassVisitor, ClassVisitor> {
 
         @Override
@@ -1316,10 +1380,13 @@ public final class Beans {
                 }
             }
 
+            Set<MethodInfo> invokableMethods = findInvokableMethods(beanDeployment, beanClass);
+
             List<Injection> injections = Injection.forBean(beanClass, null, beanDeployment, transformer,
                     Injection.BeanType.MANAGED_BEAN);
             BeanInfo bean = new BeanInfo(beanClass, beanDeployment, scope, types, qualifiers,
-                    injections, null, null, isAlternative, stereotypes, name, isDefaultBean, null, priority);
+                    injections, null, null, isAlternative, stereotypes, name, isDefaultBean, null, priority,
+                    invokableMethods);
             for (Injection injection : injections) {
                 injection.init(bean);
             }

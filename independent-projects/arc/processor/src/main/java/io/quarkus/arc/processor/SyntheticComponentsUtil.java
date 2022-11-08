@@ -11,8 +11,10 @@ import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.IndexView;
 
+import io.quarkus.arc.Invoker;
 import io.quarkus.gizmo.ClassCreator;
 import io.quarkus.gizmo.FieldCreator;
+import io.quarkus.gizmo.FieldDescriptor;
 import io.quarkus.gizmo.MethodCreator;
 import io.quarkus.gizmo.MethodDescriptor;
 import io.quarkus.gizmo.ResultHandle;
@@ -176,6 +178,17 @@ final class SyntheticComponentsUtil {
                         ResultHandle elementHandle = annotationLiterals.create(constructor, annotationClass,
                                 annotationInstance);
                         constructor.writeArrayValue(valHandle, i, elementHandle);
+                    }
+                } else if (entry.getValue() instanceof InvokerInfo) {
+                    InvokerInfo invoker = (InvokerInfo) entry.getValue();
+                    valHandle = constructor.readStaticField(
+                            FieldDescriptor.of(invoker.getClassName(), "INSTANCE", Invoker.class));
+                } else if (entry.getValue() instanceof InvokerInfo[]) {
+                    InvokerInfo[] array = (InvokerInfo[]) entry.getValue();
+                    valHandle = constructor.newArray(Invoker.class, array.length);
+                    for (int i = 0; i < array.length; i++) {
+                        constructor.writeArrayValue(valHandle, i, constructor.readStaticField(
+                                FieldDescriptor.of(array[i].getClassName(), "INSTANCE", Invoker.class)));
                     }
                 }
 

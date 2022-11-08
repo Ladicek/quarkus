@@ -16,13 +16,14 @@ public final class Components {
     private final Map<Class<? extends Annotation>, Set<Annotation>> transitiveInterceptorBindings;
     private final Map<String, Set<String>> qualifierNonbindingMembers;
     private final Set<String> qualifiers;
+    private final Set<String> invokableMarkers;
 
     public Components(Collection<InjectableBean<?>> beans, Collection<InjectableObserverMethod<?>> observers,
             Collection<InjectableContext> contexts,
             Set<String> interceptorBindings,
             Map<Class<? extends Annotation>, Set<Annotation>> transitiveInterceptorBindings,
             Supplier<Collection<RemovedBean>> removedBeans, Map<String, Set<String>> qualifierNonbindingMembers,
-            Set<String> qualifiers) {
+            Set<String> qualifiers, Set<String> invokableMarkers) {
         this.beans = beans;
         this.observers = observers;
         this.contexts = contexts;
@@ -31,6 +32,7 @@ public final class Components {
         this.removedBeans = removedBeans;
         this.qualifierNonbindingMembers = qualifierNonbindingMembers;
         this.qualifiers = qualifiers;
+        this.invokableMarkers = invokableMarkers;
     }
 
     public Collection<InjectableBean<?>> getBeans() {
@@ -73,6 +75,14 @@ public final class Components {
      */
     public Set<String> getQualifiers() {
         return qualifiers;
+    }
+
+    /**
+     *
+     * @return the set of fully-qualified class names of all registered invokable markers
+     */
+    public Set<String> getInvokableMarkers() {
+        return invokableMarkers;
     }
 
 }

@@ -162,11 +162,18 @@ public class ComponentsProviderGenerator extends AbstractGenerator {
                     getComponents.load(entry.getKey().toString()), nonbindingMembers);
         }
 
+        // Invokable markers
+        ResultHandle invokableMarkers = getComponents.newInstance(MethodDescriptor.ofConstructor(HashSet.class));
+        for (DotName invokableMarker : beanDeployment.getInvokableMarkers()) {
+            getComponents.invokeInterfaceMethod(MethodDescriptors.SET_ADD, invokableMarkers,
+                    getComponents.load(invokableMarker.toString()));
+        }
+
         ResultHandle componentsHandle = getComponents.newInstance(
                 MethodDescriptor.ofConstructor(Components.class, Collection.class, Collection.class, Collection.class,
-                        Set.class, Map.class, Supplier.class, Map.class, Set.class),
+                        Set.class, Map.class, Supplier.class, Map.class, Set.class, Set.class),
                 beansHandle, observersHandle, contextsHandle, interceptorBindings, transitiveBindingsHandle,
-                removedBeansSupplier.getInstance(), qualifiersNonbindingMembers, qualifiers);
+                removedBeansSupplier.getInstance(), qualifiersNonbindingMembers, qualifiers, invokableMarkers);
         getComponents.returnValue(componentsHandle);
 
         // Finally write the bytecode

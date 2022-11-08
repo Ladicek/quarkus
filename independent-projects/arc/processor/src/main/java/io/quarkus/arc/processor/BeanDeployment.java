@@ -6,10 +6,12 @@ import static io.quarkus.arc.processor.IndexClassLookupUtils.getClassByName;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.reflect.Modifier;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -73,6 +75,8 @@ public class BeanDeployment {
     private final Map<DotName, Set<String>> interceptorNonbindingMembers;
     private final Map<DotName, Set<AnnotationInstance>> transitiveInterceptorBindings;
 
+    private final Set<DotName> invokableMarkers;
+
     private final Map<DotName, StereotypeInfo> stereotypes;
 
     private final List<BeanInfo> beans;
@@ -82,6 +86,8 @@ public class BeanDeployment {
     private final List<DecoratorInfo> decorators;
 
     private final List<ObserverInfo> observers;
+
+    private final Set<InvokerInfo> invokers;
 
     final BeanResolverImpl beanResolver;
     final DelegateInjectionPointResolverImpl delegateInjectionPointResolver;
@@ -178,6 +184,8 @@ public class BeanDeployment {
         repeatingQualifierAnnotations = findContainerAnnotations(qualifiers);
         buildContext.putInternal(Key.QUALIFIERS, Collections.unmodifiableMap(qualifiers));
 
+        invokableMarkers = findInvokableMarkers();
+
         interceptorNonbindingMembers = new HashMap<>();
         interceptorBindings = findInterceptorBindings();
         for (InterceptorBindingRegistrar registrar : builder.interceptorBindingRegistrars) {
@@ -216,6 +224,7 @@ public class BeanDeployment {
         this.decorators = new CopyOnWriteArrayList<>();
         this.beans = new CopyOnWriteArrayList<>();
         this.observers = new CopyOnWriteArrayList<>();
+        this.invokers = new HashSet<>();
 
         this.assignabilityCheck = new AssignabilityCheck(getBeanArchiveIndex(), applicationIndex);
         this.beanResolver = new BeanResolverImpl(this);
@@ -524,6 +533,10 @@ public class BeanDeployment {
         return qualifierNonbindingMembers;
     }
 
+    public Collection<DotName> getInvokableMarkers() {
+        return Collections.unmodifiableCollection(invokableMarkers);
+    }
+
     /**
      *
      * @return the collection of interceptor bindings; the container annotations of repeating interceptor binding are not
@@ -556,6 +569,10 @@ public class BeanDeployment {
 
     Map<DotName, StereotypeInfo> getStereotypesMap() {
         return Collections.unmodifiableMap(stereotypes);
+    }
+
+    public Collection<InvokerInfo> getInvokers() {
+        return Collections.unmodifiableSet(invokers);
     }
 
     /**
@@ -609,6 +626,10 @@ public class BeanDeployment {
 
     boolean isInheritedQualifier(DotName name) {
         return (getQualifier(name).declaredAnnotation(DotNames.INHERITED) != null);
+    }
+
+    boolean isInvokableMarker(DotName name) {
+        return invokableMarkers.contains(name);
     }
 
     /**
@@ -768,6 +789,37 @@ public class BeanDeployment {
             qualifiers.put(qualifierClass.name(), qualifierClass);
         }
         return qualifiers;
+    }
+
+    private Set<DotName> findInvokableMarkers() {
+        // intentionally includes `@Invokable`, for uniform usage
+        Set<DotName> result = new HashSet<>();
+
+        Deque<DotName> workQueue = new ArrayDeque<>();
+        workQueue.add(DotNames.INVOKABLE);
+        while (!workQueue.isEmpty()) {
+            DotName annotation = workQueue.poll();
+            if (!result.add(annotation)) {
+                continue;
+            }
+
+            for (AnnotationInstance invokableMarker : beanArchiveImmutableIndex.getAnnotations(annotation)) {
+                AnnotationTarget target = invokableMarker.target();
+                if (target.kind() != Kind.CLASS) {
+                    continue;
+                }
+                ClassInfo clazz = target.asClass();
+                if (!isRuntimeAnnotationType(clazz)) {
+                    continue;
+                }
+                if (isExcluded(clazz)) {
+                    continue;
+                }
+                workQueue.add(clazz.name());
+            }
+        }
+
+        return result;
     }
 
     private Map<DotName, ClassInfo> findContainerAnnotations(Map<DotName, ClassInfo> annotations) {
@@ -1433,6 +1485,10 @@ public class BeanDeployment {
                 Reception.ALWAYS, configurator.transactionPhase, configurator.isAsync, configurator.priority,
                 observerTransformers, buildContext,
                 jtaCapabilities, configurator.notifyConsumer, configurator.params));
+    }
+
+    void addInvoker(InvokerInfo invoker) {
+        invokers.add(invoker);
     }
 
     static void processErrors(List<Throwable> errors) {

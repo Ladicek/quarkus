@@ -316,6 +316,8 @@ public final class Types {
                 default:
                     throw new IllegalArgumentException("Unsupported primitive type: " + type);
             }
+        } else if (Kind.VOID.equals(type.kind())) {
+            creator.assign(variable, creator.loadClass(void.class));
         } else if (Kind.TYPE_VARIABLE_REFERENCE.equals(type.kind())) {
             String identifier = type.asTypeVariableReference().identifier();
 
