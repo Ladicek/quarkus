@@ -37,6 +37,7 @@ import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 
 import io.quarkus.arc.Arc;
+import io.quarkus.arc.Invoker;
 import io.quarkus.runtime.StartupEvent;
 import io.quarkus.scheduler.FailedExecution;
 import io.quarkus.scheduler.Scheduled;
@@ -152,9 +153,12 @@ public class SimpleScheduler implements Scheduler {
                 Optional<SimpleTrigger> trigger = createTrigger(id, method.getMethodDescription(), cronParser, scheduled,
                         defaultOverdueGracePeriod);
                 if (trigger.isPresent()) {
-                    ScheduledInvoker invoker = initInvoker(context.createInvoker(method.getInvokerClassName()),
-                            skippedExecutionEvent, successExecutionEvent, failedExecutionEvent,
-                            scheduled.concurrentExecution(), initSkipPredicate(scheduled.skipExecutionIf()));
+                    Invoker<Object, CompletionStage<Void>> methodInvoker = method.getInvoker().getValue();
+                    DefaultInvoker delegate = new DefaultInvoker(methodInvoker, method.isNonBlocking(),
+                            method.isScheduledExecutionArgument());
+                    ScheduledInvoker invoker = initInvoker(delegate, skippedExecutionEvent, successExecutionEvent,
+                            failedExecutionEvent, scheduled.concurrentExecution(),
+                            initSkipPredicate(scheduled.skipExecutionIf()));
                     scheduledTasks.put(trigger.get().id, new ScheduledTask(trigger.get(), invoker, false));
                 }
             }
@@ -629,7 +633,7 @@ public class SimpleScheduler implements Scheduler {
             ScheduledInvoker invoker;
             if (task != null) {
                 // Use the default invoker to make sure the CDI request context is activated
-                invoker = new DefaultInvoker() {
+                invoker = new DefaultInvoker(null, false, true) {
                     @Override
                     public CompletionStage<Void> invokeBean(ScheduledExecution execution) {
                         try {
@@ -641,7 +645,7 @@ public class SimpleScheduler implements Scheduler {
                     }
                 };
             } else {
-                invoker = new DefaultInvoker() {
+                invoker = new DefaultInvoker(null, true, true) {
                     @Override
                     public CompletionStage<Void> invokeBean(ScheduledExecution execution) {
                         try {
@@ -650,12 +654,6 @@ public class SimpleScheduler implements Scheduler {
                             return CompletableFuture.failedStage(e);
                         }
                     }
-
-                    @Override
-                    public boolean isBlocking() {
-                        return false;
-                    }
-
                 };
             }
             Scheduled scheduled = new SyntheticScheduled(identity, cron, every, 0, TimeUnit.MINUTES, delayed,

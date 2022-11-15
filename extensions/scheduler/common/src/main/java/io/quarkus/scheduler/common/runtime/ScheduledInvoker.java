@@ -23,8 +23,6 @@ public interface ScheduledInvoker {
      *
      * @return {@code true} if the scheduled method is blocking, {@code false} otherwise
      */
-    default boolean isBlocking() {
-        return true;
-    }
+    boolean isBlocking();
 
 }

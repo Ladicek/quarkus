@@ -17,14 +17,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
 import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.AnnotationValue;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
-import org.jboss.jandex.IndexView;
 import org.jboss.jandex.MethodInfo;
 import org.jboss.jandex.Type;
 import org.jboss.jandex.Type.Kind;
@@ -33,10 +31,7 @@ import org.jboss.logging.Logger;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.parser.CronParser;
 
-import io.quarkus.arc.Arc;
-import io.quarkus.arc.ArcContainer;
-import io.quarkus.arc.InjectableBean;
-import io.quarkus.arc.InstanceHandle;
+import io.quarkus.arc.Invoker;
 import io.quarkus.arc.deployment.AdditionalBeanBuildItem;
 import io.quarkus.arc.deployment.AnnotationsTransformerBuildItem;
 import io.quarkus.arc.deployment.AutoAddScopeBuildItem;
@@ -52,7 +47,8 @@ import io.quarkus.arc.processor.AnnotationsTransformer;
 import io.quarkus.arc.processor.BeanDeploymentValidator;
 import io.quarkus.arc.processor.BeanInfo;
 import io.quarkus.arc.processor.BuiltinScope;
-import io.quarkus.arc.processor.DotNames;
+import io.quarkus.arc.processor.InvokerBuilder;
+import io.quarkus.arc.processor.InvokerInfo;
 import io.quarkus.bootstrap.classloading.QuarkusClassLoader;
 import io.quarkus.deployment.Capabilities;
 import io.quarkus.deployment.Capability;
@@ -64,27 +60,20 @@ import io.quarkus.deployment.annotations.Record;
 import io.quarkus.deployment.builditem.AnnotationProxyBuildItem;
 import io.quarkus.deployment.builditem.FeatureBuildItem;
 import io.quarkus.deployment.builditem.GeneratedClassBuildItem;
-import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.deployment.metrics.MetricsCapabilityBuildItem;
-import io.quarkus.gizmo.CatchBlockCreator;
-import io.quarkus.gizmo.ClassCreator;
+import io.quarkus.deployment.recording.RecorderContext;
 import io.quarkus.gizmo.ClassOutput;
-import io.quarkus.gizmo.DescriptorUtils;
-import io.quarkus.gizmo.MethodCreator;
-import io.quarkus.gizmo.MethodDescriptor;
-import io.quarkus.gizmo.ResultHandle;
-import io.quarkus.gizmo.TryBlock;
 import io.quarkus.runtime.metrics.MetricsFactory;
-import io.quarkus.runtime.util.HashUtil;
 import io.quarkus.scheduler.Scheduled;
 import io.quarkus.scheduler.ScheduledExecution;
-import io.quarkus.scheduler.common.runtime.DefaultInvoker;
 import io.quarkus.scheduler.common.runtime.MutableScheduledMethod;
 import io.quarkus.scheduler.common.runtime.SchedulerContext;
 import io.quarkus.scheduler.common.runtime.util.SchedulerUtils;
+import io.quarkus.scheduler.kotlin.runtime.CoroutineInvoker;
 import io.quarkus.scheduler.runtime.SchedulerConfig;
 import io.quarkus.scheduler.runtime.SchedulerRecorder;
 import io.quarkus.scheduler.runtime.SimpleScheduler;
+import io.smallrye.mutiny.Uni;
 
 public class SchedulerProcessor {
 
@@ -101,17 +90,18 @@ public class SchedulerProcessor {
         if (capabilities.isMissing(Capability.QUARTZ)) {
             additionalBeans.produce(new AdditionalBeanBuildItem(SimpleScheduler.class, Scheduled.ApplicationNotRunning.class));
         }
+        additionalBeans.produce(AdditionalBeanBuildItem.builder()
+                .addBeanClasses(Scheduled.class, Scheduled.Schedules.class).build());
     }
 
     @BuildStep
     AutoAddScopeBuildItem autoAddScope() {
-        // We add @Singleton to any bean class that has no scope annotation and declares at least one non-static method annotated with @Scheduled
+        // We add @Singleton to any bean class that has no scope annotation and declares at least one method annotated with @Scheduled
         return AutoAddScopeBuildItem.builder()
-                .anyMethodMatches(m -> !Modifier.isStatic(m.flags())
-                        && (m.hasAnnotation(SchedulerDotNames.SCHEDULED_NAME)
-                                || m.hasAnnotation(SchedulerDotNames.SCHEDULES_NAME)))
+                .anyMethodMatches(m -> m.hasAnnotation(SchedulerDotNames.SCHEDULED_NAME)
+                        || m.hasAnnotation(SchedulerDotNames.SCHEDULES_NAME))
                 .defaultScope(BuiltinScope.SINGLETON)
-                .reason("Found non-static scheduled business methods").build();
+                .reason("Found scheduled business methods").build();
     }
 
     @BuildStep
@@ -119,65 +109,32 @@ public class SchedulerProcessor {
             TransformedAnnotationsBuildItem transformedAnnotations,
             BuildProducer<ScheduledBusinessMethodItem> scheduledBusinessMethods) {
 
-        // First collect static scheduled methods
-        List<AnnotationInstance> schedules = new ArrayList<>(
-                beanArchives.getIndex().getAnnotations(SchedulerDotNames.SCHEDULED_NAME));
-        for (AnnotationInstance annotationInstance : beanArchives.getIndex().getAnnotations(SchedulerDotNames.SCHEDULES_NAME)) {
-            for (AnnotationInstance scheduledInstance : annotationInstance.value().asNestedArray()) {
-                // We need to set the target of the containing instance
-                schedules.add(AnnotationInstance.create(scheduledInstance.name(), annotationInstance.target(),
-                        scheduledInstance.values()));
-            }
-        }
-        for (AnnotationInstance annotationInstance : schedules) {
-            if (annotationInstance.target().kind() != METHOD) {
-                continue;
-            }
-            MethodInfo method = annotationInstance.target().asMethod();
-            if (Modifier.isStatic(method.flags()) && !KotlinUtil.isSuspendMethod(method)) {
-                scheduledBusinessMethods.produce(new ScheduledBusinessMethodItem(null, method, schedules,
-                        transformedAnnotations.hasAnnotation(method, SchedulerDotNames.NON_BLOCKING)));
-                LOGGER.debugf("Found scheduled static method %s declared on %s", method, method.declaringClass().name());
-            }
-        }
-
-        // Then collect all business methods annotated with @Scheduled
         for (BeanInfo bean : beanDiscovery.beanStream().classBeans()) {
-            collectScheduledMethods(beanArchives.getIndex(), transformedAnnotations, bean,
-                    bean.getTarget().get().asClass(),
-                    scheduledBusinessMethods);
-        }
-    }
+            ClassInfo beanClass = bean.getTarget().get().asClass();
 
-    private void collectScheduledMethods(IndexView index, TransformedAnnotationsBuildItem transformedAnnotations, BeanInfo bean,
-            ClassInfo beanClass, BuildProducer<ScheduledBusinessMethodItem> scheduledBusinessMethods) {
-
-        for (MethodInfo method : beanClass.methods()) {
-            if (Modifier.isStatic(method.flags())) {
-                // Ignore static methods
-                continue;
-            }
-            List<AnnotationInstance> schedules = null;
-            AnnotationInstance scheduledAnnotation = transformedAnnotations.getAnnotation(method,
-                    SchedulerDotNames.SCHEDULED_NAME);
-            if (scheduledAnnotation != null) {
-                schedules = List.of(scheduledAnnotation);
-            } else {
-                AnnotationInstance schedulesAnnotation = transformedAnnotations.getAnnotation(method,
-                        SchedulerDotNames.SCHEDULES_NAME);
-                if (schedulesAnnotation != null) {
-                    schedules = new ArrayList<>();
-                    for (AnnotationInstance scheduledInstance : schedulesAnnotation.value().asNestedArray()) {
-                        // We need to set the target of the containing instance
-                        schedules.add(AnnotationInstance.create(scheduledInstance.name(), schedulesAnnotation.target(),
-                                scheduledInstance.values()));
+            for (MethodInfo method : beanClass.methods()) {
+                List<AnnotationInstance> schedules = null;
+                AnnotationInstance scheduledAnnotation = transformedAnnotations.getAnnotation(method,
+                        SchedulerDotNames.SCHEDULED_NAME);
+                if (scheduledAnnotation != null) {
+                    schedules = List.of(scheduledAnnotation);
+                } else {
+                    AnnotationInstance schedulesAnnotation = transformedAnnotations.getAnnotation(method,
+                            SchedulerDotNames.SCHEDULES_NAME);
+                    if (schedulesAnnotation != null) {
+                        schedules = new ArrayList<>();
+                        for (AnnotationInstance scheduledInstance : schedulesAnnotation.value().asNestedArray()) {
+                            // We need to set the target of the containing instance
+                            schedules.add(AnnotationInstance.create(scheduledInstance.name(), schedulesAnnotation.target(),
+                                    scheduledInstance.values()));
+                        }
                     }
                 }
-            }
-            if (schedules != null) {
-                scheduledBusinessMethods.produce(new ScheduledBusinessMethodItem(bean, method, schedules,
-                        transformedAnnotations.hasAnnotation(method, SchedulerDotNames.NON_BLOCKING)));
-                LOGGER.debugf("Found scheduled business method %s declared on %s", method, bean);
+                if (schedules != null) {
+                    scheduledBusinessMethods.produce(new ScheduledBusinessMethodItem(bean, method, schedules,
+                            transformedAnnotations.hasAnnotation(method, SchedulerDotNames.NON_BLOCKING)));
+                    LOGGER.debugf("Found scheduled business method %s declared on %s", method, bean);
+                }
             }
         }
     }
@@ -277,8 +234,8 @@ public class SchedulerProcessor {
     @Record(RUNTIME_INIT)
     public FeatureBuildItem build(SchedulerConfig config, BuildProducer<SyntheticBeanBuildItem> syntheticBeans,
             SchedulerRecorder recorder, List<ScheduledBusinessMethodItem> scheduledMethods,
-            BuildProducer<GeneratedClassBuildItem> generatedClasses, BuildProducer<ReflectiveClassBuildItem> reflectiveClass,
-            AnnotationProxyBuildItem annotationProxy) {
+            BuildProducer<GeneratedClassBuildItem> generatedClasses, AnnotationProxyBuildItem annotationProxy,
+            RecorderContext recorderContext) {
 
         List<MutableScheduledMethod> scheduledMetadata = new ArrayList<>();
         ClassOutput classOutput = new GeneratedClassGizmoAdaptor(generatedClasses, new Function<String, String>() {
@@ -298,16 +255,40 @@ public class SchedulerProcessor {
 
         for (ScheduledBusinessMethodItem scheduledMethod : scheduledMethods) {
             MutableScheduledMethod metadata = new MutableScheduledMethod();
-            String invokerClass = generateInvoker(scheduledMethod, classOutput);
-            reflectiveClass.produce(ReflectiveClassBuildItem.builder(invokerClass).constructors().methods().fields().build());
-            metadata.setInvokerClassName(invokerClass);
+            BeanInfo bean = scheduledMethod.getBean();
+            MethodInfo method = scheduledMethod.getMethod();
+
+            InvokerBuilder invokerBuilder = bean.createInvoker(method);
+            Type returnType = method.returnType();
+            if (returnType.kind() == Kind.VOID) {
+                invokerBuilder.setReturnValueTransformer(CompletableFuture.class, "completedStage")
+                        .setExceptionTransformer(CompletableFuture.class, "failedStage");
+            } else if (SchedulerDotNames.COMPLETION_STAGE.equals(returnType.name())) {
+                invokerBuilder.setExceptionTransformer(CompletableFuture.class, "failedStage");
+            } else if (SchedulerDotNames.UNI.equals(returnType.name())) {
+                invokerBuilder.setReturnValueTransformer(Uni.class, "subscribeAsCompletionStage")
+                        .setExceptionTransformer(CompletableFuture.class, "failedStage");
+            } else if (KotlinUtil.isSuspendMethod(method)) {
+                invokerBuilder.setInvocationWrapper(CoroutineInvoker.class, "inNewCoroutine");
+            }
+
+            if (!Modifier.isStatic(method.flags())) {
+                invokerBuilder.setInstanceLookup();
+            }
+            InvokerInfo invoker = invokerBuilder.build();
+
+            metadata.setInvokerClassName(invoker.getClassName());
+            metadata.setDeclaringClassName(method.declaringClass().toString());
+            metadata.setMethodName(method.name());
             List<Scheduled> schedules = new ArrayList<>();
             for (AnnotationInstance scheduled : scheduledMethod.getSchedules()) {
                 schedules.add(annotationProxy.builder(scheduled, Scheduled.class).build(classOutput));
             }
             metadata.setSchedules(schedules);
-            metadata.setDeclaringClassName(scheduledMethod.getMethod().declaringClass().toString());
-            metadata.setMethodName(scheduledMethod.getMethod().name());
+            metadata.setInvoker(recorderContext.staticInstance(invoker.getClassName(), Invoker.class));
+            metadata.setNonBlocking(scheduledMethod.isNonBlocking());
+            metadata.setScheduledExecutionArgument(method.parametersCount() > 0
+                    && method.parameterType(0).equals(SCHEDULED_EXECUTION_TYPE));
             scheduledMetadata.add(metadata);
         }
 
@@ -382,138 +363,6 @@ public class SchedulerProcessor {
                                 scheduledMethod.name());
                     })));
         }
-    }
-
-    private String generateInvoker(ScheduledBusinessMethodItem scheduledMethod, ClassOutput classOutput) {
-
-        BeanInfo bean = scheduledMethod.getBean();
-        MethodInfo method = scheduledMethod.getMethod();
-        boolean isStatic = Modifier.isStatic(method.flags());
-        ClassInfo implClazz = isStatic ? method.declaringClass() : bean.getImplClazz();
-
-        String baseName;
-        if (implClazz.enclosingClass() != null) {
-            baseName = DotNames.simpleName(implClazz.enclosingClass()) + NESTED_SEPARATOR
-                    + DotNames.simpleName(implClazz);
-        } else {
-            baseName = DotNames.simpleName(implClazz.name());
-        }
-        StringBuilder sigBuilder = new StringBuilder();
-        sigBuilder.append(method.name()).append("_").append(method.returnType().name().toString());
-        for (Type i : method.parameterTypes()) {
-            sigBuilder.append(i.name().toString());
-        }
-        String generatedName = DotNames.internalPackageNameWithTrailingSlash(implClazz.name()) + baseName
-                + INVOKER_SUFFIX + "_" + method.name() + "_"
-                + HashUtil.sha1(sigBuilder.toString());
-
-        boolean isSuspendMethod = KotlinUtil.isSuspendMethod(method);
-
-        ClassCreator invokerCreator = ClassCreator.builder().classOutput(classOutput).className(generatedName)
-                .superClass(isSuspendMethod ? SchedulerDotNames.ABSTRACT_COROUTINE_INVOKER.toString()
-                        : DefaultInvoker.class.getName())
-                .build();
-
-        MethodCreator invoke;
-        if (isSuspendMethod) {
-            invoke = invokerCreator
-                    .getMethodCreator("invokeBean", Object.class.getName(),
-                            ScheduledExecution.class.getName(), SchedulerDotNames.CONTINUATION.toString());
-        } else {
-            // The descriptor is: CompletionStage invoke(ScheduledExecution execution)
-            invoke = invokerCreator.getMethodCreator("invokeBean", CompletionStage.class, ScheduledExecution.class);
-        }
-
-        // Use a try-catch block and return failed future if an exception is thrown
-        TryBlock tryBlock = invoke.tryBlock();
-        CatchBlockCreator catchBlock = tryBlock.addCatch(Throwable.class);
-        if (isSuspendMethod) {
-            catchBlock.throwException(catchBlock.getCaughtException());
-        } else {
-            catchBlock.returnValue(catchBlock.invokeStaticMethod(
-                    MethodDescriptor.ofMethod(CompletableFuture.class, "failedStage", CompletionStage.class, Throwable.class),
-                    catchBlock.getCaughtException()));
-        }
-
-        String returnTypeStr = DescriptorUtils.typeToString(method.returnType());
-        ResultHandle res;
-        if (isStatic) {
-            if (method.parameterTypes().isEmpty()) {
-                res = tryBlock.invokeStaticMethod(
-                        MethodDescriptor.ofMethod(implClazz.name().toString(), method.name(), returnTypeStr));
-            } else {
-                res = tryBlock.invokeStaticMethod(
-                        MethodDescriptor.ofMethod(implClazz.name().toString(), method.name(), returnTypeStr,
-                                ScheduledExecution.class),
-                        tryBlock.getMethodParam(0));
-            }
-        } else {
-            // InjectableBean<Foo> bean = Arc.container().bean("foo1");
-            // InstanceHandle<Foo> handle = Arc.container().instance(bean);
-            // handle.get().ping();
-            ResultHandle containerHandle = tryBlock
-                    .invokeStaticMethod(MethodDescriptor.ofMethod(Arc.class, "container", ArcContainer.class));
-            ResultHandle beanHandle = tryBlock.invokeInterfaceMethod(
-                    MethodDescriptor.ofMethod(ArcContainer.class, "bean", InjectableBean.class, String.class),
-                    containerHandle, tryBlock.load(bean.getIdentifier()));
-            ResultHandle instanceHandle = tryBlock.invokeInterfaceMethod(
-                    MethodDescriptor.ofMethod(ArcContainer.class, "instance", InstanceHandle.class, InjectableBean.class),
-                    containerHandle, beanHandle);
-            ResultHandle beanInstanceHandle = tryBlock
-                    .invokeInterfaceMethod(MethodDescriptor.ofMethod(InstanceHandle.class, "get", Object.class),
-                            instanceHandle);
-
-            if (isSuspendMethod) {
-                if (method.parametersCount() == 1) {
-                    res = tryBlock.invokeVirtualMethod(
-                            MethodDescriptor.ofMethod(implClazz.name().toString(), method.name(), Object.class.getName(),
-                                    SchedulerDotNames.CONTINUATION.toString()),
-                            beanInstanceHandle, tryBlock.getMethodParam(1));
-                } else {
-                    res = tryBlock.invokeVirtualMethod(
-                            MethodDescriptor.ofMethod(implClazz.name().toString(), method.name(), Object.class.getName(),
-                                    ScheduledExecution.class.getName(), SchedulerDotNames.CONTINUATION.toString()),
-                            beanInstanceHandle, tryBlock.getMethodParam(0), tryBlock.getMethodParam(1));
-                }
-            } else {
-                if (method.parameterTypes().isEmpty()) {
-                    res = tryBlock.invokeVirtualMethod(
-                            MethodDescriptor.ofMethod(implClazz.name().toString(), method.name(), returnTypeStr),
-                            beanInstanceHandle);
-                } else {
-                    res = tryBlock.invokeVirtualMethod(
-                            MethodDescriptor.ofMethod(implClazz.name().toString(), method.name(), returnTypeStr,
-                                    ScheduledExecution.class),
-                            beanInstanceHandle, tryBlock.getMethodParam(0));
-                }
-            }
-            // handle.destroy() - destroy dependent instance afterwards
-            if (BuiltinScope.DEPENDENT.is(bean.getScope())) {
-                tryBlock.invokeInterfaceMethod(MethodDescriptor.ofMethod(InstanceHandle.class, "destroy", void.class),
-                        instanceHandle);
-            }
-        }
-
-        if (res == null) {
-            // If the return type is void then return a new completed stage
-            res = tryBlock.invokeStaticMethod(
-                    MethodDescriptor.ofMethod(CompletableFuture.class, "completedStage", CompletionStage.class, Object.class),
-                    tryBlock.loadNull());
-        } else if (method.returnType().name().equals(SchedulerDotNames.UNI)) {
-            // Subscribe to the returned Uni
-            res = tryBlock.invokeInterfaceMethod(MethodDescriptor.ofMethod(SchedulerDotNames.UNI.toString(),
-                    "subscribeAsCompletionStage", CompletableFuture.class), res);
-        }
-
-        tryBlock.returnValue(res);
-
-        if (scheduledMethod.isNonBlocking()) {
-            MethodCreator isBlocking = invokerCreator.getMethodCreator("isBlocking", boolean.class);
-            isBlocking.returnValue(isBlocking.load(false));
-        }
-
-        invokerCreator.close();
-        return generatedName.replace('/', '.');
     }
 
     private Throwable validateScheduled(CronParser parser, AnnotationInstance schedule,

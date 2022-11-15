@@ -14,6 +14,7 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Singleton;
 
+import io.quarkus.arc.Invokable;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import io.quarkus.scheduler.Scheduled.Schedules;
@@ -50,6 +51,7 @@ import io.quarkus.scheduler.Scheduled.Schedules;
 @Target(METHOD)
 @Retention(RUNTIME)
 @Repeatable(Schedules.class)
+@Invokable
 public @interface Scheduled {
 
     /**
@@ -195,6 +197,7 @@ public @interface Scheduled {
 
     @Retention(RUNTIME)
     @Target(METHOD)
+    @Invokable
     @interface Schedules {
 
         Scheduled[] value();

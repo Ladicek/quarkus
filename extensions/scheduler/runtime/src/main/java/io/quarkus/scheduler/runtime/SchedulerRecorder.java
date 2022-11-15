@@ -42,7 +42,9 @@ public class SchedulerRecorder {
         List<ScheduledMethod> metadata = new ArrayList<>(scheduledMethods.size());
         for (ScheduledMethod scheduledMethod : scheduledMethods) {
             metadata.add(new ImmutableScheduledMethod(scheduledMethod.getInvokerClassName(),
-                    scheduledMethod.getDeclaringClassName(), scheduledMethod.getMethodName(), scheduledMethod.getSchedules()));
+                    scheduledMethod.getDeclaringClassName(), scheduledMethod.getMethodName(),
+                    scheduledMethod.getSchedules(), scheduledMethod.getInvoker(),
+                    scheduledMethod.isNonBlocking(), scheduledMethod.isScheduledExecutionArgument()));
         }
         return List.copyOf(metadata);
     }

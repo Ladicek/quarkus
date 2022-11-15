@@ -62,6 +62,7 @@ import com.cronutils.model.definition.CronDefinition;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.parser.CronParser;
 
+import io.quarkus.arc.Invoker;
 import io.quarkus.arc.Subclass;
 import io.quarkus.quartz.QuartzScheduler;
 import io.quarkus.runtime.StartupEvent;
@@ -208,8 +209,10 @@ public class QuartzSchedulerImpl implements QuartzScheduler {
                         if (identity.isEmpty()) {
                             identity = ++nameSequence + "_" + method.getInvokerClassName();
                         }
-                        ScheduledInvoker invoker = SimpleScheduler.initInvoker(
-                                context.createInvoker(method.getInvokerClassName()),
+                        Invoker<Object, CompletionStage<Void>> methodInvoker = method.getInvoker().getValue();
+                        DefaultInvoker delegate = new DefaultInvoker(methodInvoker, method.isNonBlocking(),
+                                method.isScheduledExecutionArgument());
+                        ScheduledInvoker invoker = SimpleScheduler.initInvoker(delegate,
                                 skippedExecutionEvent, successExecutionEvent, failedExecutionEvent,
                                 scheduled.concurrentExecution(),
                                 SimpleScheduler.initSkipPredicate(scheduled.skipExecutionIf()));
@@ -772,7 +775,7 @@ public class QuartzSchedulerImpl implements QuartzScheduler {
             ScheduledInvoker invoker;
             if (task != null) {
                 // Use the default invoker to make sure the CDI request context is activated
-                invoker = new DefaultInvoker() {
+                invoker = new DefaultInvoker(null, false, true) {
                     @Override
                     public CompletionStage<Void> invokeBean(ScheduledExecution execution) {
                         try {
@@ -784,7 +787,7 @@ public class QuartzSchedulerImpl implements QuartzScheduler {
                     }
                 };
             } else {
-                invoker = new DefaultInvoker() {
+                invoker = new DefaultInvoker(null, true, true) {
                     @Override
                     public CompletionStage<Void> invokeBean(ScheduledExecution execution) {
                         try {
@@ -793,12 +796,6 @@ public class QuartzSchedulerImpl implements QuartzScheduler {
                             return CompletableFuture.failedStage(e);
                         }
                     }
-
-                    @Override
-                    public boolean isBlocking() {
-                        return false;
-                    }
-
                 };
             }
             Scheduled scheduled = new SyntheticScheduled(identity, cron, every, 0, TimeUnit.MINUTES, delayed,

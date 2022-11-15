@@ -2,6 +2,7 @@ package io.quarkus.scheduler.runtime.devui;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletionStage;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -9,6 +10,7 @@ import jakarta.enterprise.inject.Instance;
 
 import org.jboss.logging.Logger;
 
+import io.quarkus.arc.Invoker;
 import io.quarkus.scheduler.FailedExecution;
 import io.quarkus.scheduler.Scheduled;
 import io.quarkus.scheduler.ScheduledExecution;
@@ -19,6 +21,7 @@ import io.quarkus.scheduler.SchedulerPaused;
 import io.quarkus.scheduler.SchedulerResumed;
 import io.quarkus.scheduler.SuccessfulExecution;
 import io.quarkus.scheduler.Trigger;
+import io.quarkus.scheduler.common.runtime.DefaultInvoker;
 import io.quarkus.scheduler.common.runtime.ScheduledInvoker;
 import io.quarkus.scheduler.common.runtime.ScheduledMethod;
 import io.quarkus.scheduler.common.runtime.SchedulerContext;
@@ -181,8 +184,9 @@ public class SchedulerJsonRPCService {
                 Context vdc = VertxContext.getOrCreateDuplicatedContext(vertx.get());
                 VertxContextSafetyToggle.setContextSafe(vdc, true);
                 try {
-                    ScheduledInvoker invoker = c
-                            .createInvoker(metadata.getInvokerClassName());
+                    Invoker<Object, CompletionStage<Void>> methodInvoker = metadata.getInvoker().getValue();
+                    ScheduledInvoker invoker = new DefaultInvoker(methodInvoker, metadata.isNonBlocking(),
+                            metadata.isScheduledExecutionArgument());
                     if (invoker.isBlocking()) {
                         vdc.executeBlocking(p -> {
                             try {
