@@ -1,13 +1,14 @@
 package io.quarkus.runtime;
 
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Represents a proxyable object that can be returned from a bytecode recorder,
  * and passed between recorders.
  *
  */
-public class RuntimeValue<T> {
+public class RuntimeValue<T> implements Supplier<T> {
 
     private final T value;
 
@@ -25,5 +26,10 @@ public class RuntimeValue<T> {
             throw new IllegalStateException("Cannot call getValue() at deployment time");
         }
         return value;
+    }
+
+    @Override
+    public T get() {
+        return getValue();
     }
 }
