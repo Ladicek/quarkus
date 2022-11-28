@@ -290,6 +290,18 @@ public class BytecodeRecorderImpl implements RecorderContext {
         }
     }
 
+    @Override
+    public <T> RuntimeValue<T> staticInstance(String name, Class<?> type) {
+        try {
+            ProxyInstance ret = getProxyInstance(RuntimeValue.class);
+            StaticInstance instance = new StaticInstance(name, type, ret.proxy, ret.key);
+            storedMethodCalls.add(instance);
+            return (RuntimeValue<T>) ret.proxy;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static boolean isProxiable(Class<?> returnType) {
 
         if (returnType.isPrimitive()) {
@@ -557,6 +569,20 @@ public class BytecodeRecorderImpl implements RecorderContext {
                         method.invokeVirtualMethod(
                                 ofMethod(StartupContext.class, "putValue", void.class, String.class, Object.class),
                                 method.getMethodParam(0), method.load(ni.proxyId), rv);
+                    }
+                });
+            } else if (set instanceof StaticInstance) {
+                context.writeInstruction(new InstructionGroup() {
+                    @Override
+                    public void write(MethodContext context, MethodCreator method, ResultHandle array) {
+                        //this instruction reads the static instance
+                        //it just goes in the startup context
+                        StaticInstance si = (StaticInstance) set;
+                        ResultHandle val = method.readStaticField(FieldDescriptor.of(si.theClass, "INSTANCE", si.instanceType));
+                        ResultHandle rv = method.newInstance(ofConstructor(RuntimeValue.class, Object.class), val);
+                        method.invokeVirtualMethod(
+                                ofMethod(StartupContext.class, "putValue", void.class, String.class, Object.class),
+                                method.getMethodParam(0), method.load(si.proxyId), rv);
                     }
                 });
             } else {
@@ -1647,6 +1673,20 @@ public class BytecodeRecorderImpl implements RecorderContext {
 
         NewInstance(String theClass, Object returnedProxy, String proxyId) {
             this.theClass = theClass;
+            this.returnedProxy = returnedProxy;
+            this.proxyId = proxyId;
+        }
+    }
+
+    static final class StaticInstance implements BytecodeInstruction {
+        final String theClass;
+        final Class<?> instanceType;
+        final Object returnedProxy;
+        final String proxyId;
+
+        StaticInstance(String theClass, Class<?> type, Object returnedProxy, String proxyId) {
+            this.theClass = theClass;
+            this.instanceType = type;
             this.returnedProxy = returnedProxy;
             this.proxyId = proxyId;
         }

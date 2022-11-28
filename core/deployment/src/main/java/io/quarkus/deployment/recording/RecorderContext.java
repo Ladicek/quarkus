@@ -64,4 +64,16 @@ public interface RecorderContext {
      * @return The class instance proxy
      */
     <T> RuntimeValue<T> newInstance(String name);
+
+    /**
+     * Creates a RuntimeValue object that represents an object referred to by a static {@code INSTANCE} field.
+     * <p>
+     * This object can be passed into recorders, but must not be used directly at deployment time
+     *
+     * @param name The name of the class that has the static {@code INSTANCE} field
+     * @param type The class of the static {@code INSTANCE} field
+     * @param <T> The type of the static {@code INSTANCE} field
+     * @return The class instance proxy
+     */
+    <T> RuntimeValue<T> staticInstance(String name, Class<?> type);
 }
