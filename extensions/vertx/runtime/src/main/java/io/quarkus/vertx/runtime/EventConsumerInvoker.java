@@ -5,6 +5,7 @@ import java.util.function.BiConsumer;
 
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.InjectableContext.ContextState;
+import io.quarkus.arc.Invoker;
 import io.quarkus.arc.ManagedContext;
 import io.quarkus.vertx.ConsumeEvent;
 import io.vertx.core.eventbus.Message;
@@ -12,18 +13,13 @@ import io.vertx.core.eventbus.Message;
 /**
  * Invokes a business method annotated with {@link ConsumeEvent}.
  */
-public abstract class EventConsumerInvoker {
+public class EventConsumerInvoker {
+    private final Invoker<Object, Object> invoker;
+    private final boolean splitHeadersBodyParams;
 
-    public boolean isBlocking() {
-        return false;
-    }
-
-    public boolean isRunningOnVirtualThread() {
-        return false;
-    }
-
-    public boolean isOrdered() {
-        return false;
+    public EventConsumerInvoker(Invoker<Object, Object> invoker, boolean splitHeadersBodyParams) {
+        this.invoker = invoker;
+        this.splitHeadersBodyParams = splitHeadersBodyParams;
     }
 
     public void invoke(Message<Object> message) throws Exception {
@@ -66,7 +62,13 @@ public abstract class EventConsumerInvoker {
         }
     }
 
-    protected abstract Object invokeBean(Message<Object> message) throws Exception;
+    private Object invokeBean(Message<Object> message) throws Exception {
+        if (splitHeadersBodyParams) {
+            return invoker.invoke(null, new Object[] { message.headers(), message.body() });
+        } else {
+            return invoker.invoke(null, new Object[] { message });
+        }
+    }
 
     private static class RequestActiveConsumer implements BiConsumer<Object, Throwable> {
 

@@ -6,6 +6,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
+import io.quarkus.arc.Invokable;
 import io.vertx.core.eventbus.MessageCodec;
 import io.vertx.mutiny.core.eventbus.Message;
 
@@ -76,6 +77,7 @@ import io.vertx.mutiny.core.eventbus.Message;
  */
 @Target(METHOD)
 @Retention(RUNTIME)
+@Invokable
 public @interface ConsumeEvent {
 
     /**
