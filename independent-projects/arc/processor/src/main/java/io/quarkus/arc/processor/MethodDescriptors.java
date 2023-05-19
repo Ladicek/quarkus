@@ -31,6 +31,7 @@ import io.quarkus.arc.InjectableInterceptor;
 import io.quarkus.arc.InjectableReferenceProvider;
 import io.quarkus.arc.impl.ClientProxies;
 import io.quarkus.arc.impl.CreationalContextImpl;
+import io.quarkus.arc.impl.CurrentInterception;
 import io.quarkus.arc.impl.DecoratorDelegateProvider;
 import io.quarkus.arc.impl.FixedValueSupplier;
 import io.quarkus.arc.impl.InjectableReferenceProviders;
@@ -301,6 +302,13 @@ public final class MethodDescriptors {
     public static final MethodDescriptor INJECTION_POINT_IMPL_CONSTRUCTOR = MethodDescriptor.ofConstructor(
             InjectionPointImpl.class,
             Type.class, Type.class, Set.class, InjectableBean.class, Set.class, Member.class, int.class, boolean.class);
+
+    public static final MethodDescriptor CURRENT_INTERCEPTION_MAY_INTERCEPT = MethodDescriptor.ofMethod(
+            CurrentInterception.class, "mayIntercept", boolean.class, InterceptedMethodMetadata.class);
+
+    public static final MethodDescriptor CURRENT_INTERCEPTION_PERFORM_AROUND_INVOKE = MethodDescriptor.ofMethod(
+            CurrentInterception.class,
+            "performAroundInvoke", Object.class, Object.class, Object[].class, InterceptedMethodMetadata.class);
 
     private MethodDescriptors() {
     }

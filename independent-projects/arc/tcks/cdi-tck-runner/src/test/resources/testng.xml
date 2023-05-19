@@ -40,11 +40,6 @@
                     <exclude name="testPublicLifecycleInterceptorMethod"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.interceptors.tests.contract.invocationContext.InvocationContextTest">
-                <methods>
-                    <exclude name="testGetTargetMethod"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.context.DestroyForSameCreationalContextTest">
                 <methods>
                     <!-- https://github.com/jakartaee/cdi-tck/pull/452 -->

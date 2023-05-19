@@ -865,35 +865,42 @@ public class SubclassGenerator extends AbstractGenerator {
         MethodDescriptor originalMethodDescriptor = MethodDescriptor.of(method);
         MethodCreator interceptedMethod = subclass.getMethodCreator(originalMethodDescriptor);
 
-        // Params
-        // Object[] params = new Object[] {p1}
-        List<Type> parameters = method.parameterTypes();
-        ResultHandle paramsHandle;
-        if (parameters.isEmpty()) {
-            paramsHandle = interceptedMethod.loadNull();
-        } else {
-            paramsHandle = interceptedMethod.newArray(Object.class,
-                    interceptedMethod.load(parameters.size()));
-            for (int i = 0; i < parameters.size(); i++) {
-                interceptedMethod.writeArrayValue(paramsHandle, i, interceptedMethod.getMethodParam(i));
-            }
+        for (Type declaredException : method.exceptions()) {
+            interceptedMethod.addException(declaredException.name().toString());
         }
+
+        List<Type> parameters = method.parameterTypes();
 
         // Delegate to super class if not constructed yet
         BytecodeCreator notConstructed = interceptedMethod
                 .ifFalse(interceptedMethod.readInstanceField(constructedField, interceptedMethod.getThis())).trueBranch();
-        ResultHandle[] params = new ResultHandle[parameters.size()];
-        for (int i = 0; i < parameters.size(); ++i) {
-            params[i] = notConstructed.getMethodParam(i);
-        }
         if (Modifier.isAbstract(method.flags())) {
             notConstructed.throwException(IllegalStateException.class, "Cannot delegate to an abstract method");
         } else {
+            ResultHandle[] params = new ResultHandle[parameters.size()];
+            for (int i = 0; i < parameters.size(); i++) {
+                params[i] = notConstructed.getMethodParam(i);
+            }
             notConstructed.returnValue(notConstructed.invokeVirtualMethod(forwardMethod, notConstructed.getThis(), params));
         }
 
-        for (Type declaredException : method.exceptions()) {
-            interceptedMethod.addException(declaredException.name().toString());
+        if (bean.getDeployment().strictCompatibility) {
+            // we only prevent recursive interception in the strict mode, because it happens
+            // very rarely in practice and the detection is costly
+            ResultHandle mayIntercept = interceptedMethod.invokeStaticMethod(
+                    MethodDescriptors.CURRENT_INTERCEPTION_MAY_INTERCEPT,
+                    interceptedMethod.readInstanceField(metadataField, interceptedMethod.getThis()));
+            BytecodeCreator alreadyBeingIntercepted = interceptedMethod.ifFalse(mayIntercept).trueBranch();
+            if (Modifier.isAbstract(method.flags())) {
+                alreadyBeingIntercepted.throwException(IllegalStateException.class, "Cannot delegate to an abstract method");
+            } else {
+                ResultHandle[] params = new ResultHandle[parameters.size()];
+                for (int i = 0; i < parameters.size(); i++) {
+                    params[i] = alreadyBeingIntercepted.getMethodParam(i);
+                }
+                alreadyBeingIntercepted.returnValue(alreadyBeingIntercepted.invokeVirtualMethod(forwardMethod,
+                        alreadyBeingIntercepted.getThis(), params));
+            }
         }
 
         TryBlock tryCatch = interceptedMethod.tryBlock();
@@ -930,9 +937,26 @@ public class SubclassGenerator extends AbstractGenerator {
             catchOtherExceptions.throwException(ArcUndeclaredThrowableException.class, "Error invoking subclass method",
                     catchOtherExceptions.getCaughtException());
         }
+
+        // Object[] params = new Object[] {p1}
+        ResultHandle paramsHandle;
+        if (parameters.isEmpty()) {
+            paramsHandle = tryCatch.loadNull();
+        } else {
+            paramsHandle = tryCatch.newArray(Object.class, tryCatch.load(parameters.size()));
+            for (int i = 0; i < parameters.size(); i++) {
+                tryCatch.writeArrayValue(paramsHandle, i, tryCatch.getMethodParam(i));
+            }
+        }
+
+        MethodDescriptor performAroundInvokeDescriptor = MethodDescriptors.INVOCATION_CONTEXTS_PERFORM_AROUND_INVOKE;
+        if (bean.getDeployment().strictCompatibility) {
+            performAroundInvokeDescriptor = MethodDescriptors.CURRENT_INTERCEPTION_PERFORM_AROUND_INVOKE;
+        }
+
         // InvocationContexts.performAroundInvoke(...)
         ResultHandle methodMetadataHandle = tryCatch.readInstanceField(metadataField, tryCatch.getThis());
-        ResultHandle ret = tryCatch.invokeStaticMethod(MethodDescriptors.INVOCATION_CONTEXTS_PERFORM_AROUND_INVOKE,
+        ResultHandle ret = tryCatch.invokeStaticMethod(performAroundInvokeDescriptor,
                 tryCatch.getThis(), paramsHandle, methodMetadataHandle);
         tryCatch.returnValue(ret);
     }
