@@ -163,8 +163,8 @@ final class Methods {
             boolean transformUnproxyableClasses) {
         BeanDeployment beanDeployment = bean.getDeployment();
         ClassInfo classInfo = bean.getTarget().get().asClass();
-        return addInterceptedMethodCandidates(beanDeployment, classInfo, classInfo, candidates, Set.copyOf(classLevelBindings),
-                bytecodeTransformerConsumer, transformUnproxyableClasses,
+        return addInterceptedMethodCandidates(beanDeployment, classInfo, classInfo, candidates, new HashSet<>(),
+                Set.copyOf(classLevelBindings), bytecodeTransformerConsumer, transformUnproxyableClasses,
                 new SubclassSkipPredicate(beanDeployment.getAssignabilityCheck()::isAssignableFrom,
                         beanDeployment.getBeanArchiveIndex(), beanDeployment.getObserverAndProducerMethods(),
                         beanDeployment.getAnnotationStore()),
@@ -173,7 +173,7 @@ final class Methods {
 
     private static Set<MethodInfo> addInterceptedMethodCandidates(BeanDeployment beanDeployment, ClassInfo classInfo,
             ClassInfo originalClassInfo,
-            Map<MethodKey, Set<AnnotationInstance>> candidates,
+            Map<MethodKey, Set<AnnotationInstance>> candidates, Set<MethodKey> alreadySeen,
             Set<AnnotationInstance> classLevelBindings, Consumer<BytecodeTransformer> bytecodeTransformerConsumer,
             boolean transformUnproxyableClasses, SubclassSkipPredicate skipPredicate, boolean ignoreMethodLevelBindings,
             Set<MethodKey> noClassInterceptorsMethods, boolean targetHasAroundInvokes) {
@@ -183,6 +183,12 @@ final class Methods {
         skipPredicate.startProcessing(classInfo, originalClassInfo);
 
         for (MethodInfo method : classInfo.methods()) {
+            MethodKey key = new MethodKey(method);
+            if (alreadySeen.contains(key)) {
+                continue;
+            }
+            alreadySeen.add(key);
+
             // Note that we must merge the bindings first
             Set<AnnotationInstance> bindings = mergeBindings(beanDeployment, originalClassInfo, classLevelBindings,
                     ignoreMethodLevelBindings, method, noClassInterceptorsMethods);
@@ -203,7 +209,7 @@ final class Methods {
                 }
             }
             if (addToCandidates) {
-                candidates.computeIfAbsent(new Methods.MethodKey(method), key -> bindings);
+                candidates.putIfAbsent(key, bindings);
             }
         }
         skipPredicate.methodsProcessed();
@@ -219,8 +225,8 @@ final class Methods {
             if (superClassInfo != null) {
                 finalMethodsFoundAndNotChanged
                         .addAll(addInterceptedMethodCandidates(beanDeployment, superClassInfo, classInfo, candidates,
-                                classLevelBindings, bytecodeTransformerConsumer, transformUnproxyableClasses, skipPredicate,
-                                ignoreMethodLevelBindings, noClassInterceptorsMethods, targetHasAroundInvokes));
+                                alreadySeen, classLevelBindings, bytecodeTransformerConsumer, transformUnproxyableClasses,
+                                skipPredicate, ignoreMethodLevelBindings, noClassInterceptorsMethods, targetHasAroundInvokes));
             }
         }
 
@@ -228,7 +234,7 @@ final class Methods {
             ClassInfo interfaceInfo = getClassByName(beanDeployment.getBeanArchiveIndex(), i);
             if (interfaceInfo != null) {
                 //interfaces can't have final methods
-                addInterceptedMethodCandidates(beanDeployment, interfaceInfo, originalClassInfo, candidates,
+                addInterceptedMethodCandidates(beanDeployment, interfaceInfo, originalClassInfo, candidates, alreadySeen,
                         classLevelBindings, bytecodeTransformerConsumer, transformUnproxyableClasses,
                         skipPredicate, true, noClassInterceptorsMethods, targetHasAroundInvokes);
             }
