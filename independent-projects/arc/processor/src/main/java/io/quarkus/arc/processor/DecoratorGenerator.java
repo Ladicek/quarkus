@@ -25,6 +25,7 @@ import org.jboss.jandex.Type.Kind;
 import org.jboss.jandex.TypeVariable;
 
 import io.quarkus.arc.InjectableDecorator;
+import io.quarkus.arc.impl.AbstractInjectableBean;
 import io.quarkus.arc.processor.BeanProcessor.PrivateMembersCollector;
 import io.quarkus.arc.processor.ResourceOutput.Resource;
 import io.quarkus.arc.processor.ResourceOutput.Resource.SpecialType;
@@ -41,6 +42,7 @@ public class DecoratorGenerator extends BeanGenerator {
 
     protected static final String FIELD_NAME_DECORATED_TYPES = "decoratedTypes";
     protected static final String FIELD_NAME_DELEGATE_TYPE = "delegateType";
+    protected static final String FIELD_NAME_DELEGATE_QUALIFIERS = "delegateQualifiers";
     static final String ABSTRACT_IMPL_SUFFIX = "_Impl";
 
     public DecoratorGenerator(AnnotationLiteralProcessor annotationLiterals, Predicate<DotName> applicationClassPredicate,
@@ -87,8 +89,9 @@ public class DecoratorGenerator extends BeanGenerator {
         ResourceClassOutput classOutput = new ResourceClassOutput(isApplicationClass,
                 name -> name.equals(generatedName) ? SpecialType.DECORATOR_BEAN : null, generateSources);
 
-        // MyDecorator_Bean implements InjectableDecorator<T>
+        // MyDecorator_Bean extends AbstractInjectableBean<T> implements InjectableDecorator<T>
         ClassCreator decoratorCreator = ClassCreator.builder().classOutput(classOutput).className(generatedName)
+                .superClass(AbstractInjectableBean.class)
                 .interfaces(InjectableDecorator.class, Supplier.class)
                 .build();
 
@@ -100,8 +103,6 @@ public class DecoratorGenerator extends BeanGenerator {
         }
 
         // Fields
-        FieldCreator beanTypes = decoratorCreator.getFieldCreator(FIELD_NAME_BEAN_TYPES, Set.class)
-                .setModifiers(ACC_PRIVATE | ACC_FINAL);
         FieldCreator decoratedTypes = decoratorCreator.getFieldCreator(FIELD_NAME_DECORATED_TYPES, Set.class)
                 .setModifiers(ACC_PRIVATE | ACC_FINAL);
         InjectionPointInfo delegateInjectionPoint = decorator.getDelegateInjectionPoint();
@@ -109,7 +110,7 @@ public class DecoratorGenerator extends BeanGenerator {
                 .setModifiers(ACC_PRIVATE | ACC_FINAL);
         FieldCreator delegateQualifiers = null;
         if (!delegateInjectionPoint.hasDefaultedQualifier()) {
-            delegateQualifiers = decoratorCreator.getFieldCreator(FIELD_NAME_QUALIFIERS, Set.class)
+            delegateQualifiers = decoratorCreator.getFieldCreator(FIELD_NAME_DELEGATE_QUALIFIERS, Set.class)
                     .setModifiers(ACC_PRIVATE | ACC_FINAL);
         }
 
@@ -120,13 +121,15 @@ public class DecoratorGenerator extends BeanGenerator {
         createConstructor(classOutput, decoratorCreator, decorator, injectionPointToProviderField,
                 delegateType, delegateQualifiers, decoratedTypes, reflectionRegistration);
 
+        implementStaticGetTypes(decoratorCreator, decorator);
+        implementStaticGetQualifiers(decoratorCreator, decorator);
+
         implementGetIdentifier(decorator, decoratorCreator);
         implementSupplierGet(decoratorCreator);
         implementCreate(classOutput, decoratorCreator, decorator, providerType, baseName,
                 injectionPointToProviderField, Collections.emptyMap(), Collections.emptyMap(),
                 targetPackage, isApplicationClass);
         implementGet(decorator, decoratorCreator, providerType, baseName);
-        implementGetTypes(decoratorCreator, beanTypes.getFieldDescriptor());
         implementGetBeanClass(decorator, decoratorCreator);
         // Decorators are always @Dependent and have always default qualifiers
 

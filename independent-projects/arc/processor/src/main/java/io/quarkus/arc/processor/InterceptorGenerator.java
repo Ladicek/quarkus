@@ -28,6 +28,7 @@ import org.jboss.jandex.Type;
 
 import io.quarkus.arc.ArcInvocationContext;
 import io.quarkus.arc.InjectableInterceptor;
+import io.quarkus.arc.impl.AbstractInjectableBean;
 import io.quarkus.arc.processor.BeanProcessor.PrivateMembersCollector;
 import io.quarkus.arc.processor.ResourceOutput.Resource;
 import io.quarkus.arc.processor.ResourceOutput.Resource.SpecialType;
@@ -99,14 +100,13 @@ public class InterceptorGenerator extends BeanGenerator {
         ResourceClassOutput classOutput = new ResourceClassOutput(isApplicationClass,
                 name -> name.equals(generatedName) ? SpecialType.INTERCEPTOR_BEAN : null, generateSources);
 
-        // MyInterceptor_Bean implements InjectableInterceptor<T>
+        // MyInterceptor_Bean extends AbstractInjectableBean<T> implements InjectableInterceptor<T>
         ClassCreator interceptorCreator = ClassCreator.builder().classOutput(classOutput).className(generatedName)
+                .superClass(AbstractInjectableBean.class)
                 .interfaces(InjectableInterceptor.class, Supplier.class)
                 .build();
 
         // Fields
-        FieldCreator beanTypes = interceptorCreator.getFieldCreator(FIELD_NAME_BEAN_TYPES, Set.class)
-                .setModifiers(ACC_PRIVATE | ACC_FINAL);
         FieldCreator bindings = interceptorCreator.getFieldCreator(FIELD_NAME_BINDINGS, Set.class)
                 .setModifiers(ACC_PRIVATE | ACC_FINAL);
 
@@ -118,6 +118,9 @@ public class InterceptorGenerator extends BeanGenerator {
         createConstructor(classOutput, interceptorCreator, interceptor, injectionPointToProviderField,
                 bindings.getFieldDescriptor(), reflectionRegistration, isApplicationClass, providerType);
 
+        implementStaticGetTypes(interceptorCreator, interceptor);
+        implementStaticGetQualifiers(interceptorCreator, interceptor);
+
         implementGetIdentifier(interceptor, interceptorCreator);
         implementSupplierGet(interceptorCreator);
         implementCreate(classOutput, interceptorCreator, interceptor, providerType, baseName,
@@ -125,7 +128,6 @@ public class InterceptorGenerator extends BeanGenerator {
                 Collections.emptyMap(), Collections.emptyMap(),
                 targetPackage, isApplicationClass);
         implementGet(interceptor, interceptorCreator, providerType, baseName);
-        implementGetTypes(interceptorCreator, beanTypes.getFieldDescriptor());
         implementGetBeanClass(interceptor, interceptorCreator);
         // Interceptors are always @Dependent and have always default qualifiers
 

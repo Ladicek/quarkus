@@ -9,9 +9,8 @@ import jakarta.enterprise.inject.spi.InjectionPoint;
 public class InjectionPointBean extends BuiltInBean<InjectionPoint> {
     private static final Set<Type> IP_TYPES = Set.of(InjectionPoint.class, Object.class);
 
-    @Override
-    public Set<Type> getTypes() {
-        return IP_TYPES;
+    public InjectionPointBean() {
+        super(IP_TYPES);
     }
 
     @Override

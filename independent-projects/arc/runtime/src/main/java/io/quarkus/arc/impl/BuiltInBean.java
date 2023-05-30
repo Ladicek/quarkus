@@ -1,14 +1,24 @@
 package io.quarkus.arc.impl;
 
-import jakarta.enterprise.context.spi.CreationalContext;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Type;
+import java.util.Set;
 
-import io.quarkus.arc.InjectableBean;
+import jakarta.enterprise.context.spi.CreationalContext;
 
 /**
  * Common class for all built-in beans.
  *
  */
-public abstract class BuiltInBean<T> implements InjectableBean<T> {
+public abstract class BuiltInBean<T> extends AbstractInjectableBean<T> {
+
+    protected BuiltInBean(Set<Type> types) {
+        super(types);
+    }
+
+    protected BuiltInBean(Set<Type> types, Set<Annotation> qualifiers) {
+        super(types, qualifiers);
+    }
 
     @Override
     public String getIdentifier() {

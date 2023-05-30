@@ -1,7 +1,6 @@
 package io.quarkus.arc.impl;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Type;
 import java.util.Set;
 
 import jakarta.enterprise.context.spi.CreationalContext;
@@ -16,7 +15,7 @@ import io.quarkus.arc.InjectableInterceptor;
  *
  * @param <T>
  */
-public class InitializedInterceptor<T> implements InjectableInterceptor<T> {
+public class InitializedInterceptor<T> extends AbstractInjectableBean<T> implements InjectableInterceptor<T> {
 
     public static <I> InitializedInterceptor<I> of(I interceptorInstance, InjectableInterceptor<I> delegate) {
         return new InitializedInterceptor<>(interceptorInstance, delegate);
@@ -27,6 +26,7 @@ public class InitializedInterceptor<T> implements InjectableInterceptor<T> {
     private final InjectableInterceptor<T> delegate;
 
     InitializedInterceptor(T interceptorInstance, InjectableInterceptor<T> delegate) {
+        super(delegate.getTypes(), delegate.getQualifiers());
         this.interceptorInstance = interceptorInstance;
         this.delegate = delegate;
     }
@@ -39,16 +39,6 @@ public class InitializedInterceptor<T> implements InjectableInterceptor<T> {
     @Override
     public Class<? extends Annotation> getScope() {
         return delegate.getScope();
-    }
-
-    @Override
-    public Set<Type> getTypes() {
-        return delegate.getTypes();
-    }
-
-    @Override
-    public Set<Annotation> getQualifiers() {
-        return delegate.getQualifiers();
     }
 
     @Override

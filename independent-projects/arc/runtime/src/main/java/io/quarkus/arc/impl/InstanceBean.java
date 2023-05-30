@@ -16,9 +16,8 @@ public class InstanceBean extends BuiltInBean<Instance<?>> {
 
     static final InstanceBean INSTANCE = new InstanceBean();
 
-    @Override
-    public Set<Type> getTypes() {
-        return INSTANCE_TYPES;
+    public InstanceBean() {
+        super(INSTANCE_TYPES);
     }
 
     @Override

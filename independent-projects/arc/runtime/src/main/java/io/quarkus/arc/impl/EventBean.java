@@ -11,9 +11,8 @@ public class EventBean extends BuiltInBean<Event<?>> {
 
     public static final Set<Type> EVENT_TYPES = Set.of(Event.class, Object.class);
 
-    @Override
-    public Set<Type> getTypes() {
-        return EVENT_TYPES;
+    public EventBean() {
+        super(EVENT_TYPES);
     }
 
     @Override

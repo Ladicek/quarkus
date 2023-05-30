@@ -1,7 +1,6 @@
 package io.quarkus.arc;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Type;
 import java.util.Collections;
 import java.util.Set;
 
@@ -10,8 +9,6 @@ import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.InjectionPoint;
-
-import io.quarkus.arc.impl.Qualifiers;
 
 /**
  * Quarkus representation of an injectable bean.
@@ -46,22 +43,6 @@ public interface InjectableBean<T> extends Bean<T>, InjectableReferenceProvider<
     @Override
     default Class<? extends Annotation> getScope() {
         return Dependent.class;
-    }
-
-    /**
-     *
-     * @return the set of bean types
-     */
-    @Override
-    Set<Type> getTypes();
-
-    /**
-     *
-     * @return the set of qualifiers
-     */
-    @Override
-    default Set<Annotation> getQualifiers() {
-        return Qualifiers.DEFAULT_QUALIFIERS;
     }
 
     @Override
