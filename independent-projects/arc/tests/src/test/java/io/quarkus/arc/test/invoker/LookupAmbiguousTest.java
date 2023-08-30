@@ -5,13 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import jakarta.enterprise.inject.spi.DeploymentException;
+import jakarta.enterprise.invoke.Invokable;
 import jakarta.inject.Singleton;
 
 import org.jboss.jandex.MethodInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import io.quarkus.arc.Invokable;
 import io.quarkus.arc.test.ArcTestContainer;
 
 public class LookupAmbiguousTest {

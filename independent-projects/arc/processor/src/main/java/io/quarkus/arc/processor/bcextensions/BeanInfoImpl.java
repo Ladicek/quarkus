@@ -6,8 +6,10 @@ import java.util.stream.Collectors;
 import jakarta.enterprise.inject.build.compatible.spi.BeanInfo;
 import jakarta.enterprise.inject.build.compatible.spi.DisposerInfo;
 import jakarta.enterprise.inject.build.compatible.spi.InjectionPointInfo;
+import jakarta.enterprise.inject.build.compatible.spi.InvokerInfo;
 import jakarta.enterprise.inject.build.compatible.spi.ScopeInfo;
 import jakarta.enterprise.inject.build.compatible.spi.StereotypeInfo;
+import jakarta.enterprise.invoke.InvokerBuilder;
 import jakarta.enterprise.lang.model.AnnotationInfo;
 import jakarta.enterprise.lang.model.declarations.ClassInfo;
 import jakarta.enterprise.lang.model.declarations.FieldInfo;
@@ -138,5 +140,20 @@ class BeanInfoImpl implements BeanInfo {
     @Override
     public String toString() {
         return arcBeanInfo.toString();
+    }
+
+    @Override
+    public Collection<MethodInfo> invokableMethods() {
+        return arcBeanInfo.getInvokableMethods()
+                .stream()
+                .map(it -> new MethodInfoImpl(jandexIndex, annotationOverlays, it))
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    @Override
+    public InvokerBuilder<InvokerInfo> createInvoker(MethodInfo method) {
+        org.jboss.jandex.MethodInfo jandexMethod = ((MethodInfoImpl) method).jandexDeclaration;
+        io.quarkus.arc.processor.InvokerBuilder arcInvokerBuilder = arcBeanInfo.createInvoker(jandexMethod);
+        return new InvokerBuilderImpl(arcInvokerBuilder);
     }
 }

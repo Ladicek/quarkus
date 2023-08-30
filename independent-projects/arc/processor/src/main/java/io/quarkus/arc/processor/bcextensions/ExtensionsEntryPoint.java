@@ -49,6 +49,7 @@ import io.quarkus.arc.processor.ContextRegistrar;
 import io.quarkus.arc.processor.CustomAlterableContexts;
 import io.quarkus.arc.processor.CustomAlterableContexts.CustomAlterableContextInfo;
 import io.quarkus.arc.processor.InterceptorBindingRegistrar;
+import io.quarkus.arc.processor.InvokableMarkerRegistrar;
 import io.quarkus.arc.processor.ObserverConfigurator;
 import io.quarkus.arc.processor.ObserverInfo;
 import io.quarkus.arc.processor.ObserverRegistrar;
@@ -78,6 +79,7 @@ public class ExtensionsEntryPoint {
     private final Map<DotName, ClassConfig> qualifiers;
     private final Map<DotName, ClassConfig> interceptorBindings;
     private final Map<DotName, ClassConfig> stereotypes;
+    private final Set<DotName> invokableMarkers;
     private final List<MetaAnnotationsImpl.ContextData> contexts;
 
     private volatile AllAnnotationTransformations preAnnotationTransformations;
@@ -98,6 +100,7 @@ public class ExtensionsEntryPoint {
             qualifiers = null;
             interceptorBindings = null;
             stereotypes = null;
+            invokableMarkers = null;
             contexts = null;
             syntheticBeans = null;
             syntheticObservers = null;
@@ -107,6 +110,7 @@ public class ExtensionsEntryPoint {
             qualifiers = new ConcurrentHashMap<>();
             interceptorBindings = new ConcurrentHashMap<>();
             stereotypes = new ConcurrentHashMap<>();
+            invokableMarkers = Collections.newSetFromMap(new ConcurrentHashMap<>());
             contexts = Collections.synchronizedList(new ArrayList<>());
             syntheticBeans = Collections.synchronizedList(new ArrayList<>());
             syntheticObservers = Collections.synchronizedList(new ArrayList<>());
@@ -133,7 +137,8 @@ public class ExtensionsEntryPoint {
                     Thread.currentThread().getContextClassLoader(), new ConcurrentHashMap<>(), applicationIndex);
 
             new ExtensionPhaseDiscovery(invoker, computingApplicationIndex, errors, additionalClasses,
-                    preAnnotationTransformations, qualifiers, interceptorBindings, stereotypes, contexts).run();
+                    preAnnotationTransformations, qualifiers, interceptorBindings, stereotypes, invokableMarkers,
+                    contexts).run();
         } finally {
             // noone should attempt annotation transformations on custom meta-annotations after `@Discovery` is finished
             preAnnotationTransformations.freeze();
@@ -205,6 +210,15 @@ public class ExtensionsEntryPoint {
                 @Override
                 public Set<DotName> getAdditionalStereotypes() {
                     return stereotypes.keySet();
+                }
+            });
+        }
+
+        if (!invokableMarkers.isEmpty()) {
+            builder.addInvokableMarkerRegistrar(new InvokableMarkerRegistrar() {
+                @Override
+                public Set<DotName> getAdditionalInvokableMarkers() {
+                    return invokableMarkers;
                 }
             });
         }
@@ -532,6 +546,10 @@ public class ExtensionsEntryPoint {
                 configurator.param(entry.getKey(), (org.jboss.jandex.AnnotationInstance) entry.getValue());
             } else if (entry.getValue() instanceof org.jboss.jandex.AnnotationInstance[]) {
                 configurator.param(entry.getKey(), (org.jboss.jandex.AnnotationInstance[]) entry.getValue());
+            } else if (entry.getValue() instanceof io.quarkus.arc.processor.InvokerInfo) {
+                configurator.param(entry.getKey(), (io.quarkus.arc.processor.InvokerInfo) entry.getValue());
+            } else if (entry.getValue() instanceof io.quarkus.arc.processor.InvokerInfo[]) {
+                configurator.param(entry.getKey(), (io.quarkus.arc.processor.InvokerInfo[]) entry.getValue());
             } else {
                 throw new IllegalStateException("Unknown param: " + entry);
             }

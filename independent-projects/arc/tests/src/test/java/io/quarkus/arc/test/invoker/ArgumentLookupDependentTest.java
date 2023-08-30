@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.invoke.Invokable;
 import jakarta.inject.Singleton;
 
 import org.jboss.jandex.MethodInfo;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.InstanceHandle;
-import io.quarkus.arc.Invokable;
 import io.quarkus.arc.Invoker;
 import io.quarkus.arc.test.ArcTestContainer;
 

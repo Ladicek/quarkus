@@ -3,6 +3,7 @@ package io.quarkus.arc.impl;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,12 +37,12 @@ import jakarta.enterprise.inject.spi.InterceptionType;
 import jakarta.enterprise.inject.spi.Interceptor;
 import jakarta.enterprise.inject.spi.ObserverMethod;
 import jakarta.enterprise.inject.spi.ProducerFactory;
+import jakarta.enterprise.invoke.Invokable;
 import jakarta.inject.Qualifier;
 import jakarta.interceptor.InterceptorBinding;
 
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.InjectableBean;
-import io.quarkus.arc.Invokable;
 
 /**
  * @author Martin Kouba
@@ -233,6 +234,11 @@ public class BeanManagerImpl implements BeanManager {
             throw new ContextNotActiveException("No active context found for: " + scopeType);
         }
         return context;
+    }
+
+    @Override
+    public Collection<Context> getContexts(Class<? extends Annotation> scopeType) {
+        return (Collection) Arc.container().getContexts(scopeType);
     }
 
     @Override

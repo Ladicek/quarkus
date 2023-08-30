@@ -4,6 +4,7 @@ import static io.quarkus.arc.processor.BuildExtension.SimpleKey.simpleBuiltIn;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
@@ -67,6 +68,7 @@ public interface BuildExtension {
         static Key<Map<DotName, ClassInfo>> QUALIFIERS = simpleBuiltIn("qualifiers");
         static Key<Map<DotName, ClassInfo>> INTERCEPTOR_BINDINGS = simpleBuiltIn("interceptorBindings");
         static Key<Map<DotName, StereotypeInfo>> STEREOTYPES = simpleBuiltIn("stereotypes");
+        static Key<Set<DotName>> INVOKABLE_MARKERS = simpleBuiltIn("invokableMarkers");
         static Key<BeanDeployment> DEPLOYMENT = simpleBuiltIn("deployment");
 
         String asString();

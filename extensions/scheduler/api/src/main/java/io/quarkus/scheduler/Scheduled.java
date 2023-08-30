@@ -12,9 +12,9 @@ import java.util.concurrent.TimeUnit;
 
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.invoke.Invokable;
 import jakarta.inject.Singleton;
 
-import io.quarkus.arc.Invokable;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import io.quarkus.scheduler.Scheduled.Schedules;

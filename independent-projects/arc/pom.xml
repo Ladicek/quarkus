@@ -42,7 +42,7 @@
         <maven.compiler.release>11</maven.compiler.release>
 
         <!-- specification versions -->
-        <version.cdi>4.0.1</version.cdi>
+        <version.cdi>4.1.0-SNAPSHOT</version.cdi>
         <version.jakarta-annotation>2.1.1</version.jakarta-annotation>
         <version.jpa>3.1.0</version.jpa>
         <version.jta>2.0.1</version.jta>

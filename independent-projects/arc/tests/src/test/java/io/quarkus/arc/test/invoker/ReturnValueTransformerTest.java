@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import jakarta.enterprise.invoke.Invokable;
 import jakarta.inject.Singleton;
 
 import org.jboss.jandex.MethodInfo;
@@ -15,7 +16,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.InstanceHandle;
-import io.quarkus.arc.Invokable;
 import io.quarkus.arc.Invoker;
 import io.quarkus.arc.test.ArcTestContainer;
 

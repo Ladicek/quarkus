@@ -185,6 +185,10 @@ public class BeanDeployment {
         buildContext.putInternal(Key.QUALIFIERS, Collections.unmodifiableMap(qualifiers));
 
         invokableMarkers = findInvokableMarkers();
+        for (InvokableMarkerRegistrar invokableMarkerRegistrar : builder.invokableMarkerRegistrars) {
+            invokableMarkers.addAll(invokableMarkerRegistrar.getAdditionalInvokableMarkers());
+        }
+        buildContext.putInternal(Key.INVOKABLE_MARKERS, Collections.unmodifiableSet(invokableMarkers));
 
         interceptorNonbindingMembers = new HashMap<>();
         interceptorBindings = findInterceptorBindings();

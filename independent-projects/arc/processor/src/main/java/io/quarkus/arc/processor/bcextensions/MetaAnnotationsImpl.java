@@ -4,6 +4,7 @@ import java.lang.annotation.Annotation;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import jakarta.enterprise.context.spi.AlterableContext;
 import jakarta.enterprise.inject.build.compatible.spi.ClassConfig;
@@ -18,16 +19,18 @@ class MetaAnnotationsImpl implements MetaAnnotations {
     private final Map<DotName, ClassConfig> qualifiers;
     private final Map<DotName, ClassConfig> interceptorBindings;
     private final Map<DotName, ClassConfig> stereotypes;
+    private final Set<DotName> invokableMarkers;
     private final List<ContextData> contexts;
 
     MetaAnnotationsImpl(org.jboss.jandex.IndexView applicationIndex, AllAnnotationTransformations annotationTransformations,
             Map<DotName, ClassConfig> qualifiers, Map<DotName, ClassConfig> interceptorBindings,
-            Map<DotName, ClassConfig> stereotypes, List<ContextData> contexts) {
+            Map<DotName, ClassConfig> stereotypes, Set<DotName> invokableMarkers, List<ContextData> contexts) {
         this.applicationIndex = applicationIndex;
         this.annotationTransformations = annotationTransformations;
         this.qualifiers = qualifiers;
         this.interceptorBindings = interceptorBindings;
         this.stereotypes = stereotypes;
+        this.invokableMarkers = invokableMarkers;
         this.contexts = contexts;
     }
 
@@ -52,6 +55,12 @@ class MetaAnnotationsImpl implements MetaAnnotations {
         ClassConfig classConfig = new ClassConfigImpl(applicationIndex, annotationTransformations, jandexClass);
         map.put(annotationName, classConfig);
         return classConfig;
+    }
+
+    @Override
+    public void addInvokable(Class<? extends Annotation> annotation) {
+        DotName annotationName = DotName.createSimple(annotation.getName());
+        invokableMarkers.add(annotationName);
     }
 
     @Override

@@ -518,6 +518,7 @@ public class BeanProcessor {
         final List<QualifierRegistrar> qualifierRegistrars;
         final List<InterceptorBindingRegistrar> interceptorBindingRegistrars;
         final List<StereotypeRegistrar> stereotypeRegistrars;
+        final List<InvokableMarkerRegistrar> invokableMarkerRegistrars;
         final List<BeanDeploymentValidator> beanDeploymentValidators;
         final List<Function<BeanInfo, Consumer<BytecodeCreator>>> suppressConditionGenerators;
 
@@ -553,6 +554,7 @@ public class BeanProcessor {
             qualifierRegistrars = new ArrayList<>();
             interceptorBindingRegistrars = new ArrayList<>();
             stereotypeRegistrars = new ArrayList<>();
+            invokableMarkerRegistrars = new ArrayList<>();
             beanDeploymentValidators = new ArrayList<>();
             suppressConditionGenerators = new ArrayList<>();
 
@@ -640,6 +642,11 @@ public class BeanProcessor {
 
         public Builder addStereotypeRegistrar(StereotypeRegistrar stereotypeRegistrar) {
             this.stereotypeRegistrars.add(stereotypeRegistrar);
+            return this;
+        }
+
+        public Builder addInvokableMarkerRegistrar(InvokableMarkerRegistrar invokableMarkerRegistrar) {
+            this.invokableMarkerRegistrars.add(invokableMarkerRegistrar);
             return this;
         }
 
