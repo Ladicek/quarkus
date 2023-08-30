@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 import jakarta.enterprise.inject.AmbiguousResolutionException;
 import jakarta.enterprise.inject.UnsatisfiedResolutionException;
 import jakarta.enterprise.inject.spi.DeploymentException;
+import jakarta.enterprise.invoke.Transformer;
 
 import org.jboss.jandex.AnnotationInstance;
 import org.jboss.jandex.AnnotationTarget;
@@ -231,6 +232,13 @@ public class InvokerGenerator extends AbstractGenerator {
             FieldCreator instance = clazz.getFieldCreator("INSTANCE", Invoker.class)
                     .setModifiers(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL);
 
+            FieldCreator returnValueTransformerInstance = null;
+            if (invoker.returnValueTransformer != null && invoker.returnValueTransformer.method == null) {
+                // transformer class approach
+                returnValueTransformerInstance = clazz.getFieldCreator("returnValueTransformer", Transformer.class)
+                        .setModifiers(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL);
+            }
+
             MethodCreator clinit = clazz.getMethodCreator(Methods.CLINIT, void.class)
                     .setModifiers(Opcodes.ACC_STATIC);
             clinit.writeStaticField(instance.getFieldDescriptor(),
@@ -240,6 +248,10 @@ public class InvokerGenerator extends AbstractGenerator {
             MethodCreator ctor = clazz.getMethodCreator(Methods.INIT, void.class)
                     .setModifiers(Opcodes.ACC_PRIVATE);
             ctor.invokeSpecialMethod(MethodDescriptor.ofMethod(Object.class, Methods.INIT, void.class), ctor.getThis());
+            if (returnValueTransformerInstance != null) {
+                ctor.writeInstanceField(returnValueTransformerInstance.getFieldDescriptor(), ctor.getThis(),
+                        ctor.newInstance(MethodDescriptor.ofConstructor(invoker.returnValueTransformer.clazz)));
+            }
             ctor.returnVoid();
 
 /*
@@ -309,9 +321,16 @@ public class InvokerGenerator extends AbstractGenerator {
             if (targetMethod.returnType().kind() == Type.Kind.VOID) {
                 result = bytecode.loadNull();
             }
-            Type returnValueType = targetMethod.returnType();
-            result = findAndInvokeTransformer(invoker.returnValueTransformer, returnValueType,
-                    invoker, result, bytecode, null);
+            if (returnValueTransformerInstance != null) {
+                MethodDescriptor tform = MethodDescriptor.ofMethod(Transformer.class, "transform", Object.class, Object.class);
+                ResultHandle tformer = bytecode.readInstanceField(returnValueTransformerInstance.getFieldDescriptor(),
+                        bytecode.getThis());
+                result = bytecode.invokeInterfaceMethod(tform, tformer, result);
+            } else {
+                Type returnValueType = targetMethod.returnType();
+                result = findAndInvokeTransformer(invoker.returnValueTransformer, returnValueType,
+                        invoker, result, bytecode, null);
+            }
             if (finisher.wasCreated()) {
                 bytecode.invokeVirtualMethod(MethodDescriptor.ofMethod(InvokerCleanupTasks.class, "finish", void.class),
                         finisher.getOrCreate());

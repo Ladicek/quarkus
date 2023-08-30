@@ -3,7 +3,7 @@ package io.quarkus.arc.processor;
 final class InvocationTransformer {
     final InvocationTransformerKind kind;
     final Class<?> clazz;
-    final String method;
+    final String method; // `null` when using the transformer class approach
 
     InvocationTransformer(InvocationTransformerKind kind, Class<?> clazz, String method) {
         this.kind = kind;

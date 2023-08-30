@@ -2,6 +2,7 @@ package io.quarkus.arc.processor.bcextensions;
 
 import jakarta.enterprise.inject.build.compatible.spi.InvokerInfo;
 import jakarta.enterprise.invoke.InvokerBuilder;
+import jakarta.enterprise.invoke.Transformer;
 
 class InvokerBuilderImpl implements InvokerBuilder<InvokerInfo> {
     private final io.quarkus.arc.processor.InvokerBuilder arcInvokerBuilder;
@@ -37,6 +38,12 @@ class InvokerBuilderImpl implements InvokerBuilder<InvokerInfo> {
     @Override
     public InvokerBuilder<InvokerInfo> setReturnValueTransformer(Class<?> clazz, String methodName) {
         arcInvokerBuilder.setReturnValueTransformer(clazz, methodName);
+        return this;
+    }
+
+    @Override
+    public InvokerBuilder<InvokerInfo> setReturnValueTransformer(Class<? extends Transformer<?, ?>> transformer) {
+        arcInvokerBuilder.setReturnValueTransformer(transformer);
         return this;
     }
 

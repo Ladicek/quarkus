@@ -2,6 +2,8 @@ package io.quarkus.arc.processor;
 
 import java.util.function.Consumer;
 
+import jakarta.enterprise.invoke.Transformer;
+
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.MethodInfo;
 
@@ -70,6 +72,15 @@ public class InvokerBuilder {
         }
 
         this.returnValueTransformer = new InvocationTransformer(InvocationTransformerKind.RETURN_VALUE, clazz, methodName);
+        return this;
+    }
+
+    public InvokerBuilder setReturnValueTransformer(Class<? extends Transformer<?, ?>> transformer) {
+        if (returnValueTransformer != null) {
+            throw new IllegalStateException();
+        }
+
+        this.returnValueTransformer = new InvocationTransformer(InvocationTransformerKind.RETURN_VALUE, transformer, null);
         return this;
     }
 
