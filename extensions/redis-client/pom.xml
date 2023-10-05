@@ -19,6 +19,9 @@
     <modules>
         <module>deployment</module>
         <module>runtime</module>
+
+        <module>sessions/deployment</module>
+        <module>sessions/runtime</module>
     </modules>
 
 

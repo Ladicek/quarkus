@@ -60,6 +60,7 @@ import io.quarkus.vertx.http.runtime.CurrentRequestProducer;
 import io.quarkus.vertx.http.runtime.CurrentVertxRequest;
 import io.quarkus.vertx.http.runtime.HttpBuildTimeConfig;
 import io.quarkus.vertx.http.runtime.HttpConfiguration;
+import io.quarkus.vertx.http.runtime.SessionsBuildTimeConfig;
 import io.quarkus.vertx.http.runtime.VertxConfigBuilder;
 import io.quarkus.vertx.http.runtime.VertxHttpRecorder;
 import io.quarkus.vertx.http.runtime.attribute.ExchangeAttributeBuilder;
@@ -67,11 +68,15 @@ import io.quarkus.vertx.http.runtime.cors.CORSRecorder;
 import io.quarkus.vertx.http.runtime.filters.Filter;
 import io.quarkus.vertx.http.runtime.filters.GracefulShutdownFilter;
 import io.quarkus.vertx.http.runtime.management.ManagementInterfaceBuildTimeConfig;
+import io.quarkus.vertx.http.sessions.deployment.spi.SessionStoreRequestBuildItem;
+import io.quarkus.vertx.http.sessions.deployment.spi.SessionStoreResponseBuildItem;
+import io.quarkus.vertx.http.sessions.spi.SessionStoreKind;
 import io.vertx.core.Handler;
 import io.vertx.core.http.impl.Http1xServerRequest;
 import io.vertx.core.impl.VertxImpl;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.sstore.SessionStore;
 
 class VertxHttpProcessor {
 
@@ -184,6 +189,19 @@ class VertxHttpProcessor {
             ManagementInterfaceBuildTimeConfig managementInterfaceBuildTimeConfig) {
         return KubernetesPortBuildItem.fromRuntimeConfiguration("management", "quarkus.management.port", 9000,
                 managementInterfaceBuildTimeConfig.enabled);
+    }
+
+    @BuildStep
+    public void sessionStoreRequest(HttpBuildTimeConfig config, BuildProducer<SessionStoreRequestBuildItem> request) {
+        if (config.sessions.mode == SessionsBuildTimeConfig.SessionsMode.REDIS) {
+            request.produce(
+                    new SessionStoreRequestBuildItem(SessionStoreKind.REDIS, config.sessions.redis.clientName));
+        } else if (config.sessions.mode == SessionsBuildTimeConfig.SessionsMode.INFINISPAN) {
+            request.produce(
+                    new SessionStoreRequestBuildItem(SessionStoreKind.INFINISPAN, config.sessions.infinispan.clientName));
+        } else {
+            request.produce(new SessionStoreRequestBuildItem(SessionStoreKind.NONE, Optional.empty()));
+        }
     }
 
     @BuildStep
@@ -314,7 +332,9 @@ class VertxHttpProcessor {
             ShutdownConfig shutdownConfig,
             LiveReloadConfig lrc,
             CoreVertxBuildItem core, // Injected to be sure that Vert.x has been produced before calling this method.
-            ExecutorBuildItem executorBuildItem)
+            ExecutorBuildItem executorBuildItem,
+            Optional<SessionStoreResponseBuildItem> sessionStoreProvider,
+            Capabilities capabilities)
             throws BuildException, IOException {
 
         Optional<DefaultRouteBuildItem> defaultRoute;
@@ -366,6 +386,35 @@ class VertxHttpProcessor {
             }
         }
 
+        if (httpBuildTimeConfig.sessions.mode != SessionsBuildTimeConfig.SessionsMode.DISABLED
+                && capabilities.isPresent(Capability.SERVLET)) {
+            throw new IllegalStateException("Vert.x Web sessions may not be enabled together with Undertow; "
+                    + "use Undertow (servlet) sessions instead");
+        }
+
+        RuntimeValue<SessionStore> sessionStore = null;
+        switch (httpBuildTimeConfig.sessions.mode) {
+            case DISABLED:
+                break;
+            case IN_MEMORY:
+                sessionStore = recorder.createInMemorySessionStore();
+                break;
+            case REDIS:
+                if (sessionStoreProvider.isEmpty()) {
+                    throw new IllegalStateException("Redis-based session store was configured, "
+                            + "but the Quarkus Redis Sessions extension is missing");
+                }
+                sessionStore = recorder.createRedisSessionStore(sessionStoreProvider.get().getProvider());
+                break;
+            case INFINISPAN:
+                if (sessionStoreProvider.isEmpty()) {
+                    throw new IllegalStateException("Infinispan-based session store was configured, "
+                            + "but the Quarkus Infinispan Sessions extension is missing");
+                }
+                sessionStore = recorder.createInfinispanSessionStore(sessionStoreProvider.get().getProvider());
+                break;
+        }
+
         recorder.finalizeRouter(beanContainer.getValue(),
                 defaultRoute.map(DefaultRouteBuildItem::getRoute).orElse(null),
                 listOfFilters, listOfManagementInterfaceFilters,
@@ -376,7 +425,8 @@ class VertxHttpProcessor {
                 nonApplicationRootPathBuildItem.getNonApplicationRootPath(),
                 launchMode.getLaunchMode(),
                 !requireBodyHandlerBuildItems.isEmpty(), bodyHandler, gracefulShutdownFilter,
-                shutdownConfig, executorBuildItem.getExecutorProxy());
+                shutdownConfig, executorBuildItem.getExecutorProxy(),
+                sessionStore);
 
         return new ServiceStartBuildItem("vertx-http");
     }

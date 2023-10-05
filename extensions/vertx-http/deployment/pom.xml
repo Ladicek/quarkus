@@ -33,7 +33,11 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-kubernetes-spi</artifactId>
         </dependency>
-        
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-vertx-http-sessions-deployment-spi</artifactId>
+        </dependency>
+
         <!-- Dev UI -->
         <dependency>
             <groupId>io.quarkus</groupId>

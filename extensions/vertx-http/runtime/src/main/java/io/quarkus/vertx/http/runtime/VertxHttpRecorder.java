@@ -7,9 +7,11 @@ import java.io.IOException;
 import java.net.BindException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -74,6 +76,7 @@ import io.quarkus.vertx.http.runtime.management.ManagementInterfaceBuildTimeConf
 import io.quarkus.vertx.http.runtime.management.ManagementInterfaceConfiguration;
 import io.quarkus.vertx.http.runtime.options.HttpServerCommonHandlers;
 import io.quarkus.vertx.http.runtime.options.HttpServerOptionsUtils;
+import io.quarkus.vertx.http.sessions.spi.SessionStoreProvider;
 import io.smallrye.common.vertx.VertxContext;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
@@ -104,6 +107,10 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
+import io.vertx.ext.web.handler.SessionHandler;
+import io.vertx.ext.web.sstore.ClusteredSessionStore;
+import io.vertx.ext.web.sstore.LocalSessionStore;
+import io.vertx.ext.web.sstore.SessionStore;
 
 @Recorder
 public class VertxHttpRecorder {
@@ -191,14 +198,18 @@ public class VertxHttpRecorder {
     final RuntimeValue<ManagementInterfaceConfiguration> managementConfiguration;
     private static volatile Handler<HttpServerRequest> managementRouter;
 
+    final RuntimeValue<VertxConfiguration> vertxConfiguration;
+
     public VertxHttpRecorder(HttpBuildTimeConfig httpBuildTimeConfig,
             ManagementInterfaceBuildTimeConfig managementBuildTimeConfig,
             RuntimeValue<HttpConfiguration> httpConfiguration,
-            RuntimeValue<ManagementInterfaceConfiguration> managementConfiguration) {
+            RuntimeValue<ManagementInterfaceConfiguration> managementConfiguration,
+            RuntimeValue<VertxConfiguration> vertxConfiguration) {
         this.httpBuildTimeConfig = httpBuildTimeConfig;
         this.httpConfiguration = httpConfiguration;
         this.managementBuildTimeConfig = managementBuildTimeConfig;
         this.managementConfiguration = managementConfiguration;
+        this.vertxConfiguration = vertxConfiguration;
     }
 
     public static void setHotReplacement(Handler<RoutingContext> handler, HotReplacementContext hrc) {
@@ -346,6 +357,36 @@ public class VertxHttpRecorder {
         mainRouter.getValue().mountSubRouter(frameworkPath, frameworkRouter.getValue());
     }
 
+    public RuntimeValue<SessionStore> createInMemorySessionStore() {
+        Vertx vertx = VertxCoreRecorder.getVertx().get();
+        if (httpConfiguration.getValue().sessions.inMemory.clustered
+                && vertxConfiguration.getValue().cluster() != null
+                && vertxConfiguration.getValue().cluster().clustered()) {
+            return new RuntimeValue<>(ClusteredSessionStore.create(vertx,
+                    httpConfiguration.getValue().sessions.inMemory.mapName,
+                    httpConfiguration.getValue().sessions.inMemory.retryTimeout.toMillis()));
+        } else {
+            // TODO maybe make reaper interval also configurable?
+            return new RuntimeValue<>(LocalSessionStore.create(vertx,
+                    httpConfiguration.getValue().sessions.inMemory.mapName));
+        }
+    }
+
+    public RuntimeValue<SessionStore> createRedisSessionStore(SessionStoreProvider provider) {
+        Map<String, Object> config = new HashMap<>();
+        config.put("clientName", httpBuildTimeConfig.sessions.redis.clientName.orElse(null));
+        config.put("retryTimeout", httpConfiguration.getValue().sessions.redis.retryTimeout);
+        return new RuntimeValue<>(provider.create(VertxCoreRecorder.getVertx().get(), config));
+    }
+
+    public RuntimeValue<SessionStore> createInfinispanSessionStore(SessionStoreProvider provider) {
+        Map<String, Object> config = new HashMap<>();
+        config.put("clientName", httpBuildTimeConfig.sessions.infinispan.clientName.orElse(null));
+        config.put("cacheName", httpConfiguration.getValue().sessions.infinispan.cacheName);
+        config.put("retryTimeout", httpConfiguration.getValue().sessions.infinispan.retryTimeout);
+        return new RuntimeValue<>(provider.create(VertxCoreRecorder.getVertx().get(), config));
+    }
+
     public void finalizeRouter(BeanContainer container, Consumer<Route> defaultRouteHandler,
             List<Filter> filterList, List<Filter> managementInterfaceFilterList, Supplier<Vertx> vertx,
             LiveReloadConfig liveReloadConfig, Optional<RuntimeValue<Router>> mainRouterRuntimeValue,
@@ -355,7 +396,7 @@ public class VertxHttpRecorder {
             LaunchMode launchMode, boolean requireBodyHandler,
             Handler<RoutingContext> bodyHandler,
             GracefulShutdownFilter gracefulShutdownFilter, ShutdownConfig shutdownConfig,
-            Executor executor) {
+            Executor executor, RuntimeValue<SessionStore> sessionStore) {
         HttpConfiguration httpConfiguration = this.httpConfiguration.getValue();
         // install the default route at the end
         Router httpRouteRouter = httpRouterRuntimeValue.getValue();
@@ -412,6 +453,23 @@ public class VertxHttpRecorder {
         HttpServerCommonHandlers.applyFilters(filtersInConfig, httpRouteRouter);
         // Headers sent on any request, regardless of the response
         HttpServerCommonHandlers.applyHeaders(httpConfiguration.header, httpRouteRouter);
+
+        if (sessionStore != null) {
+            SessionsConfig sessions = httpConfiguration.sessions;
+            // TODO probably need to normalize and relativize the path here
+            String path = sessions.path;
+            SessionHandler sessionHandler = SessionHandler.create(sessionStore.getValue())
+                    .setSessionTimeout(sessions.timeout.toMillis())
+                    .setMinLength(sessions.idLength)
+                    .setSessionCookiePath(path)
+                    .setSessionCookieName(sessions.cookieName)
+                    .setCookieHttpOnlyFlag(sessions.cookieHttpOnly)
+                    .setCookieSecureFlag(sessions.cookieSecure.isEnabled(httpConfiguration.insecureRequests))
+                    .setCookieSameSite(sessions.cookieSameSite.orElse(null))
+                    .setCookieMaxAge(sessions.cookieMaxAge.map(Duration::toMillis).orElse(-1L));
+            // TODO verify if this is the correct router to which the session handler should be installed
+            httpRouteRouter.route(path).handler(sessionHandler);
+        }
 
         Handler<HttpServerRequest> root;
         if (rootPath.equals("/")) {

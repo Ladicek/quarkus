@@ -162,6 +162,11 @@
             <plugin>
                 <groupId>io.quarkus</groupId>
                 <artifactId>quarkus-extension-maven-plugin</artifactId>
+                <configuration>
+                    <conditionalDependencies>
+                        <extension>io.quarkus:quarkus-infinispan-client-sessions:${project.version}</extension>
+                    </conditionalDependencies>
+                </configuration>
             </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
