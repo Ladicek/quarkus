@@ -397,21 +397,68 @@ class HibernateValidatorProcessor {
     }
 
     @BuildStep
+    void annotationTransformation(BeanValidationAnnotationsBuildItem beanValidationAnnotations,
+            BeanArchiveIndexBuildItem beanArchiveIndexBuildItem,
+            CombinedIndexBuildItem combinedIndexBuildItem,
+            List<AdditionalJaxRsResourceMethodAnnotationsBuildItem> additionalJaxRsResourceMethodAnnotations,
+            BuildProducer<AnnotationsTransformerBuildItem> annotationsTransformers) {
+
+        // we use both indexes to support both generated beans and jars that contain no CDI beans but only Validation annotations
+        IndexView indexView = CompositeIndex.create(beanArchiveIndexBuildItem.getIndex(), combinedIndexBuildItem.getIndex());
+
+        Map<DotName, Set<SimpleMethodSignatureKey>> methodsWithInheritedValidation = new HashMap<>();
+
+        for (DotName consideredAnnotation : beanValidationAnnotations.getAllAnnotations()) {
+            Collection<AnnotationInstance> annotationInstances = indexView.getAnnotations(consideredAnnotation);
+            if (annotationInstances.isEmpty()) {
+                continue;
+            }
+
+            for (AnnotationInstance annotation : annotationInstances) {
+                if (annotation.target().kind() == AnnotationTarget.Kind.METHOD) {
+                    contributeMethodsWithInheritedValidation(methodsWithInheritedValidation, indexView,
+                            annotation.target().asMethod());
+                } else if (annotation.target().kind() == AnnotationTarget.Kind.METHOD_PARAMETER) {
+                    contributeMethodsWithInheritedValidation(methodsWithInheritedValidation, indexView,
+                            annotation.target().asMethodParameter().method());
+                } else if (annotation.target().kind() == AnnotationTarget.Kind.TYPE) {
+                    AnnotationTarget enclosingTarget = annotation.target().asType().enclosingTarget();
+                    if (enclosingTarget.kind() == AnnotationTarget.Kind.METHOD) {
+                        contributeMethodsWithInheritedValidation(methodsWithInheritedValidation, indexView,
+                                enclosingTarget.asMethod());
+                    }
+                }
+            }
+        }
+
+        // JAX-RS methods are handled differently by the transformer so those need to be gathered here.
+        // Note: The focus only on methods is basically an incomplete solution, since there could also be
+        // class-level JAX-RS annotations but currently the transformer only looks at methods.
+        Set<DotName> additional = new HashSet<>();
+        additionalJaxRsResourceMethodAnnotations.forEach((s) -> additional.addAll(s.getAnnotationClasses()));
+        Map<DotName, Set<SimpleMethodSignatureKey>> jaxRsMethods = gatherJaxRsMethods(additional,
+                indexView);
+
+        // Add the annotations transformer to add @MethodValidated annotations on the methods requiring validation
+        annotationsTransformers.produce(new AnnotationsTransformerBuildItem(
+                new MethodValidatedAnnotationsTransformer(beanValidationAnnotations.getAllAnnotations(),
+                        jaxRsMethods, methodsWithInheritedValidation)));
+
+    }
+
+    @BuildStep
     @Record(STATIC_INIT)
     public void build(
             HibernateValidatorRecorder recorder, RecorderContext recorderContext,
             BeanValidationAnnotationsBuildItem beanValidationAnnotations,
             BuildProducer<ReflectiveFieldBuildItem> reflectiveFields,
             BuildProducer<ReflectiveMethodBuildItem> reflectiveMethods,
-            BuildProducer<AnnotationsTransformerBuildItem> annotationsTransformers,
             BeanArchiveIndexBuildItem beanArchiveIndexBuildItem,
             CombinedIndexBuildItem combinedIndexBuildItem,
             BuildProducer<FeatureBuildItem> feature,
             BuildProducer<BeanContainerListenerBuildItem> beanContainerListener,
             BuildProducer<UnremovableBeanBuildItem> unremovableBeans,
             ShutdownContextBuildItem shutdownContext,
-            List<ConfigClassBuildItem> configClasses,
-            List<AdditionalJaxRsResourceMethodAnnotationsBuildItem> additionalJaxRsResourceMethodAnnotations,
             Capabilities capabilities,
             LocalesBuildTimeConfig localesBuildTimeConfig,
             HibernateValidatorBuildTimeConfig hibernateValidatorBuildTimeConfig) throws Exception {
@@ -422,7 +469,6 @@ class HibernateValidatorProcessor {
         IndexView indexView = CompositeIndex.create(beanArchiveIndexBuildItem.getIndex(), combinedIndexBuildItem.getIndex());
 
         Set<DotName> classNamesToBeValidated = new HashSet<>();
-        Map<DotName, Set<SimpleMethodSignatureKey>> methodsWithInheritedValidation = new HashMap<>();
         Set<String> detectedBuiltinConstraints = new HashSet<>();
 
         for (DotName consideredAnnotation : beanValidationAnnotations.getAllAnnotations()) {
@@ -452,8 +498,6 @@ class HibernateValidatorProcessor {
                     reflectiveMethods.produce(new ReflectiveMethodBuildItem(annotation.target().asMethod()));
                     contributeClassMarkedForCascadingValidation(classNamesToBeValidated, indexView, consideredAnnotation,
                             annotation.target().asMethod().returnType());
-                    contributeMethodsWithInheritedValidation(methodsWithInheritedValidation, indexView,
-                            annotation.target().asMethod());
                 } else if (annotation.target().kind() == AnnotationTarget.Kind.METHOD_PARAMETER) {
                     contributeClass(classNamesToBeValidated, indexView,
                             annotation.target().asMethodParameter().method().declaringClass().name());
@@ -462,8 +506,6 @@ class HibernateValidatorProcessor {
                             // FIXME this won't work in the case of synthetic parameters
                             annotation.target().asMethodParameter().method().parameterTypes()
                                     .get(annotation.target().asMethodParameter().position()));
-                    contributeMethodsWithInheritedValidation(methodsWithInheritedValidation, indexView,
-                            annotation.target().asMethodParameter().method());
                 } else if (annotation.target().kind() == AnnotationTarget.Kind.CLASS) {
                     contributeClass(classNamesToBeValidated, indexView, annotation.target().asClass().name());
                     // no need for reflection in the case of a class level constraint
@@ -486,28 +528,10 @@ class HibernateValidatorProcessor {
                                     consideredAnnotation,
                                     annotation.target().asType().target());
                         }
-                        contributeMethodsWithInheritedValidation(methodsWithInheritedValidation, indexView,
-                                enclosingTarget.asMethod());
                     }
                 }
             }
         }
-
-        // JAX-RS methods are handled differently by the transformer so those need to be gathered here.
-        // Note: The focus only on methods is basically an incomplete solution, since there could also be
-        // class-level JAX-RS annotations but currently the transformer only looks at methods.
-        Set<DotName> additional = new HashSet<>();
-        additionalJaxRsResourceMethodAnnotations.forEach((s) -> additional.addAll(s.getAnnotationClasses()));
-        Map<DotName, Set<SimpleMethodSignatureKey>> jaxRsMethods = gatherJaxRsMethods(additional,
-                indexView);
-
-        // Add the annotations transformer to add @MethodValidated annotations on the methods requiring validation
-
-        annotationsTransformers
-                .produce(new AnnotationsTransformerBuildItem(
-                        new MethodValidatedAnnotationsTransformer(beanValidationAnnotations.getAllAnnotations(),
-                                jaxRsMethods,
-                                methodsWithInheritedValidation)));
 
         Set<Class<?>> classesToBeValidated = new HashSet<>();
         for (DotName className : classNamesToBeValidated) {
