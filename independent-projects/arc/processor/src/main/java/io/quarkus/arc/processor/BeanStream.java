@@ -66,12 +66,25 @@ public final class BeanStream implements Iterable<BeanInfo> {
 
     /**
      *
-     * @param beanType
+     * @param beanTypeName
      * @return the new stream of beans
      * @see BeanInfo#getTypes()
      */
     public BeanStream withBeanType(DotName beanTypeName) {
         stream = stream.filter(bean -> bean.getTypes().stream().anyMatch(t -> t.name().equals(beanTypeName)));
+        return this;
+    }
+
+    /**
+     *
+     * @param beanUnrestrictedTypeName
+     * @return the new stream of beans
+     * @see BeanInfo#getUnrestrictedTypes()
+     */
+    public BeanStream withUnrestrictedBeanType(DotName beanUnrestrictedTypeName) {
+        stream = stream.filter(bean -> {
+            return bean.getUnrestrictedTypes().stream().anyMatch(t -> t.name().equals(beanUnrestrictedTypeName));
+        });
         return this;
     }
 
@@ -103,6 +116,16 @@ public final class BeanStream implements Iterable<BeanInfo> {
      */
     public BeanStream matchBeanTypes(Predicate<Set<Type>> predicate) {
         stream = stream.filter(bean -> predicate.test(bean.getTypes()));
+        return this;
+    }
+
+    /**
+     *
+     * @param predicate
+     * @return the new stream of beans
+     */
+    public BeanStream matchUnrestrictedBeanTypes(Predicate<Set<Type>> predicate) {
+        stream = stream.filter(bean -> predicate.test(bean.getUnrestrictedTypes()));
         return this;
     }
 
