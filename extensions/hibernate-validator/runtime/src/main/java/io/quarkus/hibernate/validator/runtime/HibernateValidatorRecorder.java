@@ -1,7 +1,6 @@
 package io.quarkus.hibernate.validator.runtime;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -26,6 +25,7 @@ import org.hibernate.validator.spi.properties.GetterPropertySelectionStrategy;
 import org.hibernate.validator.spi.scripting.ScriptEvaluatorFactory;
 
 import io.quarkus.arc.Arc;
+import io.quarkus.arc.ArcContainer;
 import io.quarkus.arc.InstanceHandle;
 import io.quarkus.arc.runtime.BeanContainer;
 import io.quarkus.arc.runtime.BeanContainerListener;
@@ -52,7 +52,7 @@ public class HibernateValidatorRecorder {
     }
 
     public BeanContainerListener initializeValidatorFactory(Set<Class<?>> classesToBeValidated,
-            Set<String> detectedBuiltinConstraints, Set<Class<?>> valueExtractorClasses,
+            Set<String> detectedBuiltinConstraints, Set<String> valueExtractorBeanIds,
             boolean hasXmlConfiguration, boolean jpaInClasspath,
             ShutdownContext shutdownContext, LocalesBuildTimeConfig localesBuildTimeConfig,
             HibernateValidatorBuildTimeConfig hibernateValidatorBuildTimeConfig) {
@@ -161,10 +161,10 @@ public class HibernateValidatorRecorder {
                         // because `ValueExtractor` is usually implemented
                         // as a parameterized type with wildcards,
                         // and the CDI spec does not consider such types as bean types.
-                        // We work around that by listing all classes implementing `ValueExtractor` at build time,
-                        // then retrieving all bean instances implementing those types here.
+                        // We work around that by listing all beans implementing `ValueExtractor` at build time,
+                        // then retrieving all instances of those beans here.
                         // See https://github.com/quarkusio/quarkus/pull/30447
-                        .<ValueExtractor<?>> uniqueBeanInstances(valueExtractorClasses)) {
+                        .<ValueExtractor<?>>beanInstances(valueExtractorBeanIds)) {
                     configuration.addValueExtractor(valueExtractor);
                 }
 
@@ -193,30 +193,10 @@ public class HibernateValidatorRecorder {
         return beanContainerListener;
     }
 
-    // Ideally we'd retrieve all instances of a set of bean types
-    // simply by calling something like ArcContainer#select(Set<Type>)
-    // but that method does not exist.
-    // This method acts as a replacement.
-    private static <T> Iterable<T> uniqueBeanInstances(Set<Class<?>> classes) {
-        Set<String> beanIds = new HashSet<>();
-        for (Class<?> clazz : classes) {
-            for (InstanceHandle<?> handle : Arc.container().select(clazz).handles()) {
-                if (!handle.isAvailable()) {
-                    continue;
-                }
-                // A single bean can have multiple types.
-                // To avoid returning duplicate instances of the same bean,
-                // we first retrieve all bean IDs, deduplicate those,
-                // then retrieve the instance for each bean.
-                // Note that just retrieving all instances and putting them in a identity-based Set
-                // would not work, because beans can have the dependent pseudo-scope,
-                // in which case we'd have two instances of the same bean.
-                beanIds.add(handle.getBean().getIdentifier());
-            }
-        }
+    private static <T> Iterable<T> beanInstances(Set<String> beanIds) {
         List<T> instances = new ArrayList<>();
+        ArcContainer arcContainer = Arc.container();
         for (String beanId : beanIds) {
-            var arcContainer = Arc.container();
             instances.add(arcContainer.instance(arcContainer.<T> bean(beanId)).get());
         }
         return instances;

@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import jakarta.inject.Singleton;
 import jakarta.validation.ClockProvider;
@@ -54,6 +55,7 @@ import io.quarkus.arc.deployment.AnnotationsTransformerBuildItem;
 import io.quarkus.arc.deployment.AutoAddScopeBuildItem;
 import io.quarkus.arc.deployment.BeanArchiveIndexBuildItem;
 import io.quarkus.arc.deployment.BeanContainerListenerBuildItem;
+import io.quarkus.arc.deployment.BeanDiscoveryFinishedBuildItem;
 import io.quarkus.arc.deployment.SyntheticBeanBuildItem;
 import io.quarkus.arc.deployment.UnremovableBeanBuildItem;
 import io.quarkus.arc.processor.BeanInfo;
@@ -455,6 +457,7 @@ class HibernateValidatorProcessor {
             BuildProducer<ReflectiveMethodBuildItem> reflectiveMethods,
             BeanArchiveIndexBuildItem beanArchiveIndexBuildItem,
             CombinedIndexBuildItem combinedIndexBuildItem,
+            BeanDiscoveryFinishedBuildItem beanDiscovery,
             BuildProducer<FeatureBuildItem> feature,
             BuildProducer<BeanContainerListenerBuildItem> beanContainerListener,
             BuildProducer<UnremovableBeanBuildItem> unremovableBeans,
@@ -538,22 +541,19 @@ class HibernateValidatorProcessor {
             classesToBeValidated.add(recorderContext.classProxy(className.toString()));
         }
 
+        Set<String> valueExtractorBeanIds = beanDiscovery.beanStream()
+                .withUnrestrictedBeanType(VALUE_EXTRACTOR)
+                .stream()
+                .map(BeanInfo::getIdentifier)
+                .collect(Collectors.toSet());
+
         // Prevent the removal of ValueExtractor beans
-        // and collect all classes implementing ValueExtractor (for use in HibernateValidatorRecorder)
-        Set<DotName> valueExtractorClassNames = new HashSet<>();
-        for (ClassInfo valueExtractorType : indexView.getAllKnownImplementors(VALUE_EXTRACTOR)) {
-            valueExtractorClassNames.add(valueExtractorType.name());
-        }
-        unremovableBeans.produce(UnremovableBeanBuildItem.beanTypes(valueExtractorClassNames));
-        Set<Class<?>> valueExtractorClassProxies = new HashSet<>();
-        for (DotName className : valueExtractorClassNames) {
-            valueExtractorClassProxies.add(recorderContext.classProxy(className.toString()));
-        }
+        unremovableBeans.produce(new UnremovableBeanBuildItem(it -> valueExtractorBeanIds.contains(it.getIdentifier())));
 
         beanContainerListener
                 .produce(new BeanContainerListenerBuildItem(
                         recorder.initializeValidatorFactory(classesToBeValidated, detectedBuiltinConstraints,
-                                valueExtractorClassProxies,
+                                valueExtractorBeanIds,
                                 hasXmlConfiguration(),
                                 capabilities.isPresent(Capability.HIBERNATE_ORM),
                                 shutdownContext,
