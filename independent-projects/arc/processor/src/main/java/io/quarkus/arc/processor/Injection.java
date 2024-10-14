@@ -82,6 +82,15 @@ public class Injection {
                                 "but was detected in: " + injectionPointInfo.getTargetInfo());
             }
 
+            // If a Bean instance with qualifier @Decorated is injected into a bean instance other than an decorator
+            // instance, the container automatically detects the problem and treats it as a definition error.
+            if (injectionPointInfo.getType().name().equals(DotNames.BEAN)
+                    && injectionPointInfo.getRequiredQualifier(DotNames.DECORATED) != null) {
+                throw new DefinitionException(
+                        "Invalid injection of @Decorated Bean<T>, can only be injected into decorators " +
+                                "but was detected in: " + injectionPointInfo.getTargetInfo());
+            }
+
             // the injection point is a field, an initializer method parameter or a bean constructor, with qualifier
             // @Default, then the type parameter of the injected Bean, or Interceptor must be the same as the type
             // declaring the injection point
