@@ -13,7 +13,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import io.quarkus.arc.test.ArcTestContainer;
 
-public class InvalidDecoratedTest {
+public class DecoratedBeanInjectedInNonDecoratorTest {
 
     @RegisterExtension
     public ArcTestContainer container = ArcTestContainer.builder()
