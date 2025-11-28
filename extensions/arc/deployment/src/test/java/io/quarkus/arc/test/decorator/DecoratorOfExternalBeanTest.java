@@ -15,8 +15,11 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import io.quarkus.arc.ClientProxy;
 import io.quarkus.arc.test.supplement.ConsumerOfSomeBeanInExternalLibrary;
+import io.quarkus.arc.test.supplement.ConsumerOfSomeDepBeanInExternalLibrary;
 import io.quarkus.arc.test.supplement.SomeBeanInExternalLibrary;
+import io.quarkus.arc.test.supplement.SomeDepBeanInExternalLibrary;
 import io.quarkus.arc.test.supplement.SomeEventInExternalLibrary;
 import io.quarkus.arc.test.supplement.SomeInterfaceInExternalLibrary;
 import io.quarkus.arc.test.supplement.SomeProducedDependencyInExternalLibrary;
@@ -41,13 +44,19 @@ public class DecoratorOfExternalBeanTest {
     ConsumerOfSomeBeanInExternalLibrary consumer;
 
     @Inject
+    SomeDepBeanInExternalLibrary depBean;
+
+    @Inject
+    ConsumerOfSomeDepBeanInExternalLibrary depConsumer;
+
+    @Inject
     Event<SomeEventInExternalLibrary> event;
 
     @Inject
     Instance<SomeProducedDependencyInExternalLibrary> instance;
 
     @Test
-    public void test() {
+    public void testNormalScope() {
         assertEquals("Delegated: Hello", bean.hello());
 
         assertFalse(SomeBeanInExternalLibrary.pinged);
@@ -92,15 +101,50 @@ public class DecoratorOfExternalBeanTest {
     }
 
     @Test
+    public void testPseudoScope() {
+        assertEquals("Delegated: DepHello", depBean.hello());
+
+        assertFalse(SomeDepBeanInExternalLibrary.pinged);
+
+        assertEquals("pong", depConsumer.ping());
+
+        assertTrue(SomeDepBeanInExternalLibrary.pinged);
+    }
+
+    @Test
     public void testNonAppArchive() {
+        assertTrue(SomeInterfaceInExternalLibrary.class.getClassLoader().getName()
+                .contains("Quarkus Base Runtime ClassLoader"));
         assertTrue(SomeBeanInExternalLibrary.class.getClassLoader().getName()
                 .contains("Quarkus Base Runtime ClassLoader"));
         assertTrue(ConsumerOfSomeBeanInExternalLibrary.class.getClassLoader().getName()
+                .contains("Quarkus Base Runtime ClassLoader"));
+        assertTrue(SomeDepBeanInExternalLibrary.class.getClassLoader().getName()
+                .contains("Quarkus Base Runtime ClassLoader"));
+        assertTrue(ConsumerOfSomeDepBeanInExternalLibrary.class.getClassLoader().getName()
                 .contains("Quarkus Base Runtime ClassLoader"));
         assertTrue(SomeEventInExternalLibrary.class.getClassLoader().getName()
                 .contains("Quarkus Base Runtime ClassLoader"));
         assertTrue(SomeProducedDependencyInExternalLibrary.class.getClassLoader().getName()
                 .contains("Quarkus Base Runtime ClassLoader"));
+
+        // client proxies are non-app
+        assertTrue(bean.getClass().getSimpleName().endsWith("_ClientProxy"));
+        assertTrue(bean.getClass().getClassLoader().getName().contains("Quarkus Base Runtime ClassLoader"));
+        assertTrue(consumer.getClass().getSimpleName().endsWith("_ClientProxy"));
+        assertTrue(consumer.getClass().getClassLoader().getName().contains("Quarkus Base Runtime ClassLoader"));
+    }
+
+    @Test
+    public void testAppArchive() {
+        assertTrue(MyDecorator.class.getClassLoader().getName().contains("Quarkus Runtime ClassLoader"));
+
+        // decoration subclasses are app
+        SomeBeanInExternalLibrary unwrappedBean = ClientProxy.unwrap(bean);
+        assertTrue(unwrappedBean.getClass().getSimpleName().endsWith("_Subclass"));
+        assertTrue(unwrappedBean.getClass().getClassLoader().getName().contains("Quarkus Runtime ClassLoader"));
+        assertTrue(depBean.getClass().getSimpleName().endsWith("_Subclass"));
+        assertTrue(depBean.getClass().getClassLoader().getName().contains("Quarkus Runtime ClassLoader"));
     }
 
     @Decorator
