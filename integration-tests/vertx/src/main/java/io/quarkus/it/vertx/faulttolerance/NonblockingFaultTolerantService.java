@@ -16,7 +16,6 @@ import io.smallrye.mutiny.Uni;
 public class NonblockingFaultTolerantService {
     static final Queue<String> invocationThreads = new ConcurrentLinkedQueue<>();
 
-    @NonBlocking
     @Retry(maxRetries = 10, delay = 5, delayUnit = ChronoUnit.MILLIS)
     @Fallback(fallbackMethod = "fallback")
     public Uni<String> hello() {
